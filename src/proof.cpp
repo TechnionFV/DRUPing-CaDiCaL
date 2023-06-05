@@ -35,6 +35,16 @@ void Internal::check () {
   proof->connect (checker);
 }
 
+// Enable proof bchecking.
+
+void Internal::bcheck () {
+  assert (!bchecker);
+  new_proof_on_demand ();
+  bchecker = new BChecker (this);
+  LOG ("PROOF connecting proof bchecker");
+  proof->connect (bchecker);
+}
+
 // We want to close a proof trace and stop checking as soon we are done.
 
 void Internal::close_trace () {

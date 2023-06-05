@@ -37,7 +37,7 @@ OPTION( checkconstraint,   1,  0,  1,0,0,0, "check constraint satisfied") \
 OPTION( checkfailed,       1,  0,  1,0,0,0, "check failed literals form core") \
 OPTION( checkfrozen,       0,  0,  1,0,0,0, "check all frozen semantics") \
 OPTION( checkproof,        0,  0,  1,0,0,0, "online forward proof checking internally") \
-OPTION( checkproofoffline, 1,  0,  1,0,0,0, "offline backward proof checking internally") \
+OPTION( checkproofbackward,1,  0,  1,0,0,0, "offline backward proof checking internally") \
 OPTION( checkwitness,      1,  0,  1,0,0,0, "check witness internally") \
 OPTION( chrono,            1,  0,  2,0,0,1, "chronological backtracking") \
 OPTION( chronoalways,      0,  0,  1,0,0,1, "force always chronological") \

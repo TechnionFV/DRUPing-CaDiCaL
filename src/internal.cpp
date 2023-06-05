@@ -35,6 +35,7 @@ Internal::Internal ()
   marked_failed (true),
   proof (0),
   checker (0),
+  bchecker (0),
   tracer (0),
   opts (this),
 #ifndef QUIET
@@ -58,6 +59,7 @@ Internal::~Internal () {
   if (proof) delete proof;
   if (tracer) delete tracer;
   if (checker) delete checker;
+  if (bchecker) delete bchecker;
   if (vals) { vals -= vsize; delete [] vals; }
 }
 
@@ -685,6 +687,7 @@ int Internal::lookahead () {
 void Internal::print_statistics () {
   stats.print (this);
   if (checker) checker->print_stats ();
+  if (bchecker) bchecker->print_stats ();
 }
 
 /*------------------------------------------------------------------------*/

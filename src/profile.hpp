@@ -43,6 +43,7 @@ PROFILE(backward,3) \
 PROFILE(block,2) \
 PROFILE(bump,4) \
 PROFILE(checking,2) \
+PROFILE(bchecking,2) \
 PROFILE(cdcl,1) \
 PROFILE(collect,3) \
 PROFILE(compact,3) \
