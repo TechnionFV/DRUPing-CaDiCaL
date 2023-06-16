@@ -114,10 +114,11 @@ BCheckerClause * BChecker::new_clause (const vector<int> & simplified, const uin
   const size_t bytes = sizeof (BCheckerClause) + (surplus_bytes-1) * sizeof (int);
   BCheckerClause * res = (BCheckerClause *) new char [bytes];
   res->next = 0;
+  res->counterpart = 0;
   res->hash = hash;
   res->size = size;
-  res->core = 0;
-  res->garbage = 0;
+  res->core = false;
+  res->garbage = false;
   int * literals = res->literals;
   int * p = literals;
   for (const auto & lit : simplified)
@@ -163,7 +164,126 @@ BCheckerClause * BChecker::get_bchecker_clause (vector<int> & c) {
 
 /*------------------------------------------------------------------------*/
 
+void BChecker::undo_trail_core (Clause * c, int & trail_sz) {
+  LOG ("BCHECKER undoing trail core");
+  assert (trail_sz > 0 && c->size > 0);
+  int clit = c->literals[0];
+  size_t count = 0;
+  while (internal->trail[trail_sz - 1] != clit)
+  {
+    assert(trail_sz > 0);
+    int l = internal->trail[--trail_sz];
+    if (!internal->active (l)) continue;
+    assert (internal->val (l) > 0);
+    assert (internal->val (-l) < 0);
+    Var v = internal->var (l);
+    assert (v.level > 0);
+    Clause * r = v.reason;
+    if (!r) continue;
+    assert (r->literals[0] == clit); // If this fails we can't rely on this convertion as in Minsiat.
+
+    ///TODO: internal->unassign method is exclusive for backtracking facilities. Need to undoo its inlining...
+    // internal->unassign (l);
+
+    /// TODO:|NOTE: In Minisat patch, the following code block is guarded
+    //  by if (core_units) so might need to do this here as well.
+    r->core = true;
+
+    // Antecedents of any core literal on the trail are marked as core as well.
+    for (int j = 1; j < r->size; j++)
+    {
+      Var x = internal->var(r->literals[j]);
+      assert(x.reason);
+      x.reason->core = true;
+    }
+    count++;
+  }
+  assert(clit == internal->trail[trail_sz - 1]);
+  ///TODO: internal->unassign method is exclusive for backtracking facilities. Need to undoo its inlining...
+  // internal->unassign (internal->trail[--trail_sz]);
+  LOG ("BCHECKER %zd literals have been popped from the trail", count+1);
+  internal->trail.resize(trail_sz);
+  /// TODO: What should internal->control[1].count be here? This might affect analyze. (before 0 and after 0, I guess).
+  internal->control[1].trail = internal->trail.size ();
+}
+
+bool BChecker::is_on_trail (Clause * c) {
+ assert (c);
+ return c->reason;
+}
+
+bool BChecker::validate_lemma (Clause * c) {
+  return true;
+}
+
 bool BChecker::validate () {
+  assert (inconsistent);
+  assert (proof.size ());
+
+  ///TODO: Handle case where there are conflicting assumptions.
+
+  /// TODO: Do we need to protect_reasons (); here?
+
+  Clause * top; // assume that this is the Clause reference of proof.back ();
+  top->core = true;
+
+  internal->backtrack();
+  int trail_sz = internal->trail.size();
+
+  /// TODO: Set 'internal->level' appropriately all over the place!
+  for (int i = proof.size() - 2; i >= 0; i--) {
+    BCheckerClause * bc = proof[i];
+    assert(bc && bc->size);
+    Clause * c = 0;
+    // revive if deleted.
+    if (bc->garbage) {
+      ///TODO: It means c is deleted from the internal solver database.
+      //         - Allocate a new Clause object with c in the internal solver database (Assign it to 'c').
+      //         - Order the new clause's literals.
+      //         - Updarte the bchecker clause object accordingly.
+      //         - If c is a  unit clause, then:
+      //           -- Enqueue to propagate on it in the internal solver
+      //              with the new allocated reference as the reason clause.
+      //              --- internal->search_assign_driving (c->literals[0], <new reference>);
+      ///TODO: Update bc->counterpart accordingle
+      assert (!bc->counterpart);
+      c = bc->counterpart = internal->new_clause (false);
+    } else {
+      ///TODO: If clause isn't deleted, bc->counterpart must be valid pointer. Assign it to 'c'.
+      assert (bc->counterpart);
+      c = bc->counterpart;
+    }
+
+    assert (c && bc->counterpart == c && !bc->garbage);
+
+    if (is_on_trail (c)) {
+      /// TODO: In Minisat patch, this is guarded by if (core_units)
+      //  so might need to do this here as well.
+      c->core = true;
+
+      /// TODO: Assert that the literal which its antecedent is c is at c[0] all over the place!
+      undo_trail_core (c, trail_sz);
+
+      // delete it.
+      if (c->size > 1) {
+        bc->garbage = true;
+        bc->core = false;
+        internal->mark_garbage (c);
+      }
+
+      if (c->core) {
+        assert (!internal->val (c->literals[0]));
+        /// TODO: This should be conditioned with 'if (not initial clause)'. (According to the paper at least).
+        if (!validate_lemma (c))
+          return false;
+      }
+    }
+  }
+
+  /// TODO: find core clauses in the rest of the trail.
+  /// TODO: Put units back on the trail.
+  /// TODO: Flush watches
+  return true;
   return false;
 }
 

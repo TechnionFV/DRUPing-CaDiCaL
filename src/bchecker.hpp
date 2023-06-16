@@ -16,6 +16,7 @@ namespace CaDiCaL {
 
 struct BCheckerClause {
   BCheckerClause* next;
+  Clause * counterpart;
   uint64_t hash;
   unsigned size;
   bool core;
@@ -63,11 +64,11 @@ class BChecker : public Observer {
   BCheckerClause * get_bchecker_clause (Clause *);
   BCheckerClause * get_bchecker_clause (vector<int> &);
 
-  void undo_trail_core (BCheckerClause * c, int & trail_sz);
-  bool is_on_trail (BCheckerClause *);
-  void attach_clause (BCheckerClause *);
-  void detach_clause (BCheckerClause *);
-  bool validate_lemma (BCheckerClause *);
+  // popping all trail literals up to and including the literal whose antecedent is 'c'.
+  //
+  void undo_trail_core (Clause * c, int & trail_sz);
+  bool is_on_trail (Clause *);
+  bool validate_lemma (Clause *);
 
   struct {
 
