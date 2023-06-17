@@ -8,7 +8,7 @@ namespace CaDiCaL {
 BChecker::BChecker (Internal * i)
 :
   internal (i), inconsistent (false), num_clauses (0),
-  num_garbage (0), size_clauses (0), clauses (0)
+  size_clauses (0), clauses (0)
 
 {
   LOG ("BCHECKER new");
@@ -117,7 +117,6 @@ BCheckerClause * BChecker::new_clause (const vector<int> & simplified, const uin
   res->counterpart = 0;
   res->hash = hash;
   res->size = size;
-  res->core = false;
   res->garbage = false;
   int * literals = res->literals;
   int * p = literals;
@@ -164,11 +163,59 @@ BCheckerClause * BChecker::get_bchecker_clause (vector<int> & c) {
 
 /*------------------------------------------------------------------------*/
 
+Clause * BChecker::revive_internal_clause (BCheckerClause * bc) {
+
+  ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
+
+  assert (bc->garbage && !bc->counterpart);
+
+  Clause * c = nullptr;
+  if (bc->size == 1) {
+    int lit = bc->literals[0];
+    c = bc->counterpart = internal->new_unit_clause (lit, false);
+    if (!internal->val (lit))
+      internal->search_assign (lit, c);
+  } else {
+    assert (internal->clause.empty());
+    for (unsigned i = 0; i < bc->size; i++)
+    internal->clause.push_back (bc->literals[i]);
+    c = bc->counterpart = internal->new_clause (false);
+    internal->clause.clear();
+    for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
+      if (!internal->val(c->literals[k]))
+      {
+        int l = c->literals[1];
+        c->literals[1] = c->literals[k], c->literals[k] = l;
+      }
+    internal->watch_clause (c);
+  }
+  bc->garbage = false;
+  return c;
+}
+
+void BChecker::stagnate_internal_clause (BCheckerClause * bc) {
+  assert (bc && !bc->garbage && bc->counterpart);
+  bc->garbage = true;
+  if (bc->counterpart->size > 1) {
+    internal->unwatch_clause (bc->counterpart);
+  }
+  internal->mark_garbage (bc->counterpart);
+  assert (bc->counterpart->garbage);
+}
+
+void  BChecker::shrink_internal_trail (const int trail_sz) {
+  internal->trail.resize(trail_sz);
+  /// TODO: Set internal->control[1].count correctly if needed.
+  if (internal->level) {
+    assert(internal->control.size () > 1);
+    internal->control[1].trail = internal->trail.size ();
+  }
+}
+
 void BChecker::undo_trail_core (Clause * c, int & trail_sz) {
   LOG ("BCHECKER undoing trail core");
   assert (trail_sz > 0 && c->size > 0);
   int clit = c->literals[0];
-  size_t count = 0;
   while (internal->trail[trail_sz - 1] != clit)
   {
     assert(trail_sz > 0);
@@ -176,35 +223,36 @@ void BChecker::undo_trail_core (Clause * c, int & trail_sz) {
     if (!internal->active (l)) continue;
     assert (internal->val (l) > 0);
     assert (internal->val (-l) < 0);
-    Var v = internal->var (l);
+    Var & v = internal->var (l);
     assert (v.level > 0);
     Clause * r = v.reason;
     if (!r) continue;
-    assert (r->literals[0] == clit); // If this fails we can't rely on this convertion as in Minsiat.
+    assert (r->literals[0] == clit);
 
-    ///TODO: internal->unassign method is exclusive for backtracking facilities. Need to undoo its inlining...
-    // internal->unassign (l);
+    internal->unassign (l);
 
     /// TODO:|NOTE: In Minisat patch, the following code block is guarded
-    //  by if (core_units) so might need to do this here as well.
+    //  by if (core_units). Do we want to integrate this option here as well? 
     r->core = true;
 
-    // Antecedents of any core literal on the trail are marked as core as well.
     for (int j = 1; j < r->size; j++)
     {
-      Var x = internal->var(r->literals[j]);
+      Var & x = internal->var(r->literals[j]);
       assert(x.reason);
       x.reason->core = true;
     }
-    count++;
   }
   assert(clit == internal->trail[trail_sz - 1]);
-  ///TODO: internal->unassign method is exclusive for backtracking facilities. Need to undoo its inlining...
-  // internal->unassign (internal->trail[--trail_sz]);
-  LOG ("BCHECKER %zd literals have been popped from the trail", count+1);
-  internal->trail.resize(trail_sz);
-  /// TODO: What should internal->control[1].count be here? This might affect analyze. (before 0 and after 0, I guess).
-  internal->control[1].trail = internal->trail.size ();
+
+  { // Sanity check. To be removed later.
+    Var v = internal->var (clit);
+    assert (v.level > 0);
+    Clause * r = v.reason;
+    assert (r && r == c);
+    assert (r->literals[0] == clit);
+  }
+
+  internal->unassign (internal->trail[--trail_sz]);
 }
 
 bool BChecker::is_on_trail (Clause * c) {
@@ -216,15 +264,50 @@ bool BChecker::validate_lemma (Clause * c) {
   return true;
 }
 
+void BChecker::mark_core_trail_antecedents () {
+  for (const auto & lit : internal->trail)
+  {
+    Var & x = internal->var (lit);
+    if (!x.reason) continue; // internal->assign_unit (int)
+    Clause * c = x.reason;
+    if (c->core)
+    {
+      for (int j = 1; j < c->size; ++j)
+      {
+        Var & x = internal->var(c->literals[j]);
+        assert (x.reason);
+        x.reason->core = true;
+      }
+      ///TODO: This was done in Minisat.. but why?
+      // qhead = i;
+    }
+  }
+}
+
+void BChecker::check_counterparts () {
+  for (uint64_t i = 0; i < size_clauses; i++)
+    for (BCheckerClause * bc = clauses[i]; bc; bc = bc->next)
+      if (bc->garbage)
+        assert (!bc->counterpart);
+      else if (bc->counterpart)
+          assert (!bc->counterpart->garbage || bc->counterpart->moved);
+}
+
 bool BChecker::validate () {
   assert (inconsistent);
   assert (proof.size ());
 
-  ///TODO: Handle case where there are conflicting assumptions.
+  ///TODO: Handle case where there are conflicting assumptions
+  ///TODO: internal->protect_reasons ();
 
-  /// TODO: Do we need to protect_reasons (); here?
+  check_counterparts ();
 
-  Clause * top; // assume that this is the Clause reference of proof.back ();
+  BCheckerClause * bc_top = proof.back ();
+
+  assert (!bc_top->garbage);
+  assert (bc_top->counterpart);
+
+  Clause * top = proof.back()->counterpart;
   top->core = true;
 
   internal->backtrack();
@@ -234,57 +317,54 @@ bool BChecker::validate () {
   for (int i = proof.size() - 2; i >= 0; i--) {
     BCheckerClause * bc = proof[i];
     assert(bc && bc->size);
-    Clause * c = 0;
+
+    Clause * c = nullptr;
+
     // revive if deleted.
     if (bc->garbage) {
-      ///TODO: It means c is deleted from the internal solver database.
-      //         - Allocate a new Clause object with c in the internal solver database (Assign it to 'c').
-      //         - Order the new clause's literals.
-      //         - Updarte the bchecker clause object accordingly.
-      //         - If c is a  unit clause, then:
-      //           -- Enqueue to propagate on it in the internal solver
-      //              with the new allocated reference as the reason clause.
-      //              --- internal->search_assign_driving (c->literals[0], <new reference>);
-      ///TODO: Update bc->counterpart accordingle
-      assert (!bc->counterpart);
-      c = bc->counterpart = internal->new_clause (false);
+      c = revive_internal_clause (bc);
+      assert (!c->garbage);
     } else {
-      ///TODO: If clause isn't deleted, bc->counterpart must be valid pointer. Assign it to 'c'.
+      ///NOTE: If clause isn't deleted, bc->counterpart must be valid pointer.
+      if (!bc->counterpart) {
+        printf ("%d\n", bc->size);
+      }
       assert (bc->counterpart);
+      assert (!bc->counterpart->garbage);
       c = bc->counterpart;
     }
 
-    assert (c && bc->counterpart == c && !bc->garbage);
+    assert (c && bc && !bc->garbage && !c->garbage);
+    assert (bc->counterpart == c);
 
     if (is_on_trail (c)) {
-      /// TODO: In Minisat patch, this is guarded by if (core_units)
-      //  so might need to do this here as well.
+      /// TODO: In Minisat patch, this is guarded by if (core_units). This might need here as well.
       c->core = true;
-
-      /// TODO: Assert that the literal which its antecedent is c is at c[0] all over the place!
       undo_trail_core (c, trail_sz);
+    }
 
-      // delete it.
-      if (c->size > 1) {
-        bc->garbage = true;
-        bc->core = false;
-        internal->mark_garbage (c);
-      }
+    stagnate_internal_clause (bc);
 
-      if (c->core) {
-        assert (!internal->val (c->literals[0]));
-        /// TODO: This should be conditioned with 'if (not initial clause)'. (According to the paper at least).
-        if (!validate_lemma (c))
-          return false;
-      }
+    if (c->core) {
+      /// TODO: According to the paper, this should be conditioned with 'if not initial clause' ( if (c->redundant) ).
+      assert (!internal->val (c->literals[0]));
+      shrink_internal_trail (trail_sz);
+      if (!validate_lemma (c))
+        return false;
     }
   }
 
+  shrink_internal_trail (trail_sz);
+
   /// TODO: find core clauses in the rest of the trail.
+  mark_core_trail_antecedents ();
+
   /// TODO: Put units back on the trail.
-  /// TODO: Flush watches
+
+  internal->flush_all_occs_and_watches ();
+
+  ///TODO: Clean up internal clauses that were created for validation purposes.
   return true;
-  return false;
 }
 
 /*------------------------------------------------------------------------*/
@@ -292,7 +372,7 @@ bool BChecker::validate () {
 void BChecker::add_derived_clause (const vector<int> & c) {
   if (inconsistent) return;
   START (bchecking);
-  LOG (c, "BCHECKER addition of derived clause");
+  LOG (c, "BCHECKER derived clause notification");
   stats.derived++;
   if (c.empty ())
     inconsistent = true;
@@ -304,24 +384,21 @@ void BChecker::add_derived_clause (const vector<int> & c) {
 void BChecker::delete_clause (const vector<int> & c) {
   if (inconsistent) return;
   START (bchecking);
-  LOG (c, "BCHECKER bchecking deletion of clause");
+  LOG (c, "BCHECKER clause deletion notification");
   stats.deleted++;
-  BCheckerClause ** p = find (c), * d = *p;
-  if (d) {
-    ///EXP:This assertion is relaxed compared to Checker::delete_clause since clauses of size 1 are assumed
-    // to be tautology during solve (). Here we aren't checking values if literals during solving.
-    // Therefore, we can safely relax this assertion as CaDiCaL might delete clauses of size 1.
-    assert (d->size);
-    assert (num_clauses);
-    num_garbage++;
-    d->garbage = 1;
-    d->counterpart = 0;
-  } else {
-    /// TODO:: If the clause hasn't been found, it has to be an original clause.
-    //         Cadical might delete an orginal clause and mark a new one as derived if it simplifies the original clause
-    //         by removing duplicated/falsified literals.
-    //         1 - Assert it is safe to treat there clauses as learnt clauses.
-    //         2 - Consider caching the original formula and asserting deleted clauses do exist.
+  {
+    // Original clauses are not being cached and might be deleted by the internal solver.
+    // Therefore, if the clause doesn't exist in bchecker db, it has to be an original clause.
+    ///TODO: Consider caching original clauses too so it would be possible to assert that
+    // deleted clauses do exist as a sanity check.
+  }
+  if (num_clauses) {
+    BCheckerClause ** p = find (c), * d = *p;
+    if (d) {
+      assert (!d->garbage && d->size);
+      d->garbage = true;
+      d->counterpart = 0;
+    }
   }
   STOP (bchecking);
 }
@@ -329,10 +406,11 @@ void BChecker::delete_clause (const vector<int> & c) {
 void BChecker::cache_counterpart (Clause * c) {
   if (inconsistent) return;
   START (bchecking);
-  LOG (c, "BCHECKER storing counterpart");
+  LOG (c, "BCHECKER caching clause counterpart");
+  stats.counterparts++;
   assert (proof.size ());
   BCheckerClause * bc = proof.back ();
-  assert (bc);
+  assert (bc && !bc->counterpart);
   bc->counterpart = c;
   STOP (bchecking);
 }
@@ -349,7 +427,6 @@ void BChecker::dump () {
   printf ("p cnf %d %" PRIu64 "\n", max_var, num_clauses);
   for (uint64_t i = 0; i < size_clauses; i++)
     for (BCheckerClause * c = clauses[i]; c; c = c->next) {
-      printf ("%d ", c->core);
       for (unsigned i = 0; i < c->size; i++)
         printf ("%d ", c->literals[i]);
       printf ("0\n");

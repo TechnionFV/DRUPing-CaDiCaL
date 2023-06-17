@@ -23,7 +23,15 @@ void Internal::learn_empty_clause () {
 void Internal::learn_unit_clause (int lit) {
   LOG ("learned unit clause %d", lit);
   external->check_learned_unit_clause (lit);
-  if (proof) proof->add_derived_unit_clause (lit);
+  if (proof) {
+    proof->add_derived_unit_clause (lit);
+    if (bchecker) {
+      assert (lit);
+      assert (opts.checkproofbackward);
+      Clause * c = new_unit_clause (lit, false);
+      bchecker->cache_counterpart (c);
+    }
+  }
   mark_fixed (lit);
 }
 

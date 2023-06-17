@@ -599,6 +599,13 @@ int Internal::solve (bool preprocess_only) {
     if (!res) res = lucky_phases ();
     if (!res) res = cdcl_loop_with_inprocessing ();
   }
+
+
+  // workaround...
+  if (res == 20 && opts.checkproofbackward && bchecker) {
+    printf ("Basel: validating: %d\n", bchecker->validate ());
+  }
+
   reset_solving ();
   report_solving (res);
   STOP (solve);

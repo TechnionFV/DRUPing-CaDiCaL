@@ -310,19 +310,15 @@ void BChecker::print_stats () {
 
   if (!stats.added && !stats.deleted) return;
 
-  SECTION ("checker statistics");
+  SECTION ("bchecker statistics");
 
-  MSG ("checks:          %15" PRId64 "", stats.checks);
-  MSG ("assumptions:     %15" PRId64 "   %10.2f    per check", stats.assumptions, relative (stats.assumptions, stats.checks));
-  MSG ("propagations:    %15" PRId64 "   %10.2f    per check", stats.propagations, relative (stats.propagations, stats.checks));
   MSG ("original:        %15" PRId64 "   %10.2f %%  of all clauses", stats.original, percent (stats.original, stats.added));
   MSG ("derived:         %15" PRId64 "   %10.2f %%  of all clauses", stats.derived, percent (stats.derived, stats.added));
+  MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all derived clauses", stats.counterparts, percent (stats.counterparts, stats.derived));
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.deleted, stats.added));
   MSG ("insertions:      %15" PRId64 "   %10.2f %%  of all clauses", stats.insertions, percent (stats.insertions, stats.added));
-  MSG ("collections:     %15" PRId64 "   %10.2f    deleted per collection", stats.collections, relative (stats.collections, stats.deleted));
   MSG ("collisions:      %15" PRId64 "   %10.2f    per search", stats.collisions, relative (stats.collisions, stats.searches));
   MSG ("searches:        %15" PRId64 "", stats.searches);
-  MSG ("units:           %15" PRId64 "", stats.units);
 }
 
 }

@@ -104,15 +104,14 @@ struct Clause {
   const_literal_iterator   end () const { return literals + size; }
 
   static size_t bytes (int size) {
-
     // Memory sanitizer insists that clauses put into consecutive memory in
     // the arena are still 8 byte aligned.  We could also allocate 8 byte
     // aligned memory there.  However, assuming the real memory foot print
     // of a clause is 8 bytes anyhow, we just allocate 8 byte aligned memory
     // all the time (even if allocated outside of the arena).
     //
-    assert (size > 1);
-    return align ((size - 2) * sizeof (int) + sizeof (Clause), 8);
+    assert (size > 0);
+    return align ((size - 1) * sizeof (int) + sizeof (Clause), 8);
   }
 
   size_t bytes () const { return bytes (size); }

@@ -7,7 +7,7 @@ namespace CaDiCaL {
 // local to this file).  It turns out that 'unassign' does not need a
 // specialization for 'probe' nor 'vivify' and thus it is shared.
 
-inline void Internal::unassign (int lit) {
+void Internal::unassign (int lit) {
   assert (val (lit) > 0);
   const int idx = vidx (lit);
   vals[idx] = 0;

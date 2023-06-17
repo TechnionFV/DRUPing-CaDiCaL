@@ -68,6 +68,77 @@ void Internal::mark_added (Clause * c) {
 
 /*------------------------------------------------------------------------*/
 
+Clause * Internal::new_unit_clause (int lit, bool red, int glue) {
+
+  const int size = 1;
+
+  if (glue > size) glue = size;
+
+  // Determine whether this clauses should be kept all the time.
+  //
+  bool keep;
+  if (!red) keep = true;
+  else if (glue <= opts.reducetier1glue) keep = true;
+  else keep = false;
+
+  size_t bytes = Clause::bytes (size);
+  Clause * c = (Clause *) new char[bytes];
+
+  stats.added.total++;
+#ifdef LOGGING
+  c->id = stats.added.total;
+#endif
+
+  c->conditioned = false;
+  c->covered = false;
+  c->enqueued = false;
+  c->frozen = false;
+  c->garbage = false;
+  c->gate = false;
+  c->hyper = false;
+  c->instantiated = false;
+  c->keep = keep;
+  c->moved = false;
+  c->reason = false;
+  c->redundant = red;
+  c->transred = false;
+  c->subsume = false;
+  c->vivified = false;
+  c->vivify = false;
+  c->core = false;
+  c->used = 0;
+
+  c->glue = glue;
+  c->size = size;
+  c->pos = 2;
+
+  c->literals[0] = lit;
+
+  // Just checking that we did not mess up our sophisticated memory layout.
+  // This might be compiler dependent though. Crucial for correctness.
+  //
+  assert (c->bytes () == bytes);
+
+  stats.current.total++;
+  stats.added.total++;
+
+  if (red) {
+    stats.current.redundant++;
+    stats.added.redundant++;
+  } else {
+    stats.irrbytes += bytes;
+    stats.current.irredundant++;
+    stats.added.irredundant++;
+  }
+
+  clauses.push_back (c);
+  LOG (c, "new pointer %p", (void*) c);
+
+  if (likely_to_be_kept_clause (c)) mark_added (c);
+
+  return c;
+}
+
 Clause * Internal::new_clause (bool red, int glue) {
 
   assert (clause.size () <= (size_t) INT_MAX);
@@ -351,6 +422,7 @@ void Internal::add_new_original_clause () {
     if (proof) proof->delete_clause (original);
   } else {
     size_t size = clause.size ();
+    Clause * c = nullptr;
     if (!size) {
       if (!unsat) {
         if (!original.size ()) VERBOSE (1, "found empty original clause");
@@ -358,15 +430,19 @@ void Internal::add_new_original_clause () {
         unsat = true;
       }
     } else if (size == 1) {
-      assign_original_unit (clause[0]);
+      int ulit = clause[0];
+      c = new_unit_clause (ulit, false);
+      assign_original_unit (ulit);
     } else {
-      Clause * c = new_clause (false);
+      c = new_clause (false);
       watch_clause (c);
     }
     if (original.size () > size) {
       external->check_learned_clause ();
       if (proof) {
-        proof->add_derived_clause (clause);
+        proof->add_derived_clause (c);
+        if (bchecker && opts.checkproofbackward)
+          bchecker->cache_counterpart (c);
         proof->delete_clause (original);
       }
     }
@@ -387,7 +463,13 @@ Clause * Internal::new_learned_redundant_clause (int glue) {
 #endif
   external->check_learned_clause ();
   Clause * res = new_clause (true, glue);
-  if (proof) proof->add_derived_clause (res);
+  if (proof) {
+    proof->add_derived_clause (res);
+    if (bchecker) {
+      assert (opts.checkproofbackward);
+      bchecker->cache_counterpart (res);
+    }
+  }
   assert (watching ());
   watch_clause (res);
   return res;
@@ -398,7 +480,13 @@ Clause * Internal::new_learned_redundant_clause (int glue) {
 Clause * Internal::new_hyper_binary_resolved_clause (bool red, int glue) {
   external->check_learned_clause ();
   Clause * res = new_clause (red, glue);
-  if (proof) proof->add_derived_clause (res);
+  if (proof) {
+    proof->add_derived_clause (res);
+    if (bchecker) {
+      assert (opts.checkproofbackward);
+      bchecker->cache_counterpart (res);
+    }
+  }
   assert (watching ());
   watch_clause (res);
   return res;
@@ -410,7 +498,13 @@ Clause * Internal::new_hyper_ternary_resolved_clause (bool red) {
   external->check_learned_clause ();
   size_t size = clause.size ();
   Clause * res = new_clause (red, size);
-  if (proof) proof->add_derived_clause (res);
+  if (proof) {
+    proof->add_derived_clause (res);
+    if (bchecker) {
+      assert (opts.checkproofbackward);
+      bchecker->cache_counterpart (res);
+    }
+  }
   assert (!watching ());
   return res;
 }
@@ -423,7 +517,13 @@ Clause * Internal::new_clause_as (const Clause * orig) {
   const int new_glue = orig->glue;
   Clause * res = new_clause (orig->redundant, new_glue);
   assert (!orig->redundant || !orig->keep || res->keep);
-  if (proof) proof->add_derived_clause (res);
+  if (proof) {
+    proof->add_derived_clause (res);
+    if (bchecker) {
+      assert (opts.checkproofbackward);
+      bchecker->cache_counterpart (res);
+    }
+  }
   assert (watching ());
   watch_clause (res);
   return res;
@@ -435,7 +535,13 @@ Clause * Internal::new_clause_as (const Clause * orig) {
 Clause * Internal::new_resolved_irredundant_clause () {
   external->check_learned_clause ();
   Clause * res = new_clause (false);
-  if (proof) proof->add_derived_clause (res);
+  if (proof) {
+    proof->add_derived_clause (res);
+    if (bchecker) {
+      assert (opts.checkproofbackward);
+      bchecker->cache_counterpart (res);
+    }
+  }
   assert (!watching ());
   return res;
 }
