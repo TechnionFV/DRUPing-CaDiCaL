@@ -207,7 +207,7 @@ struct Internal {
   Inc inc;                      // increments on limits
   Proof * proof;                // clausal proof observers if non zero
   Checker * checker;            // online proof checker observing proof
-  BChecker * bchecker;            // offline backward proof checker observing proof
+  BChecker * bchecker;          // offline backward proof checker observing proof
   Tracer * tracer;              // proof to file tracer observing proof
   Options opts;                 // run-time options
   Stats stats;                  // statistics

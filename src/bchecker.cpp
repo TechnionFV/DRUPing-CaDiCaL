@@ -315,6 +315,7 @@ void BChecker::delete_clause (const vector<int> & c) {
     assert (num_clauses);
     num_garbage++;
     d->garbage = 1;
+    d->counterpart = 0;
   } else {
     /// TODO:: If the clause hasn't been found, it has to be an original clause.
     //         Cadical might delete an orginal clause and mark a new one as derived if it simplifies the original clause
@@ -322,6 +323,17 @@ void BChecker::delete_clause (const vector<int> & c) {
     //         1 - Assert it is safe to treat there clauses as learnt clauses.
     //         2 - Consider caching the original formula and asserting deleted clauses do exist.
   }
+  STOP (bchecking);
+}
+
+void BChecker::cache_counterpart (Clause * c) {
+  if (inconsistent) return;
+  START (bchecking);
+  LOG (c, "BCHECKER storing counterpart");
+  assert (proof.size ());
+  BCheckerClause * bc = proof.back ();
+  assert (bc);
+  bc->counterpart = c;
   STOP (bchecking);
 }
 

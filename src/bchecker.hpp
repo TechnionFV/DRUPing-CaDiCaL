@@ -101,6 +101,18 @@ public:
   void add_derived_clause (const vector<int> &);
   void delete_clause (const vector<int> &);
 
+  ///CONSULT:|NOTE: In most of the palces were proof in notified with a new learned clause,
+  //                the Clause reference can easily be obtained. However, there are two
+  //                cases were this does not hold:
+  //                1) When performing a round of Tarjan's algorithm (equivalent literal substitution)
+  //                   in decompose.cpp.. Need to consult..
+  //                2) While conflicting assumptions clause isn't actually allocated in the internal solver,
+  //                   the proof would still be notified with it so its correctness can be checked.
+  //                   In this case, we can simply create a new Clause object for the conflicting assumptions.
+  ///TODO:|NOTE: This is so fragile as it needs to be called right after
+  //       proof->add_derived_clause... Need to find a better solution.
+  void cache_counterpart (Clause *);
+
   bool validate ();             // validate the clausal proof
 
   void print_stats ();
