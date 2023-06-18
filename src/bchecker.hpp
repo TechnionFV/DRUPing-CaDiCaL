@@ -105,7 +105,7 @@ public:
   //                   the proof would still be notified with it so its correctness can be checked.
   //                   In this case, we can simply create a new Clause object for the conflicting assumptions.
   ///TODO:|NOTE: This is so fragile as it needs to be called right after
-  //       proof->add_derived_clause... Need to find a better solution.
+  //             proof->add_derived_clause... Need to find a better solution.
   void cache_counterpart (Clause *);
 
   bool validate ();             // validate the clausal proof

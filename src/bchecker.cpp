@@ -285,12 +285,25 @@ void BChecker::mark_core_trail_antecedents () {
 }
 
 void BChecker::check_counterparts () {
+  // As no cached counterparts for the empty clause.
+  assert (stats.counterparts == stats.derived - 1);
+  int invaldiated_counterparts = 0;
   for (uint64_t i = 0; i < size_clauses; i++)
     for (BCheckerClause * bc = clauses[i]; bc; bc = bc->next)
-      if (bc->garbage)
+      if (bc->garbage) {
+        invaldiated_counterparts++;
         assert (!bc->counterpart);
-      else if (bc->counterpart)
-          assert (!bc->counterpart->garbage || bc->counterpart->moved);
+      }
+      else {
+        Clause * c = bc->counterpart;
+        assert (!c->garbage || c->moved);
+        if (c->moved) {
+          assert (c->copy && !c->copy->garbage);
+          bc->counterpart = c->copy;
+        }
+        assert (bc->counterpart->size == bc->size);
+      }
+  assert (invaldiated_counterparts == stats.deleted);
 }
 
 bool BChecker::validate () {
@@ -385,7 +398,6 @@ void BChecker::delete_clause (const vector<int> & c) {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER clause deletion notification");
-  stats.deleted++;
   {
     // Original clauses are not being cached and might be deleted by the internal solver.
     // Therefore, if the clause doesn't exist in bchecker db, it has to be an original clause.
@@ -395,6 +407,7 @@ void BChecker::delete_clause (const vector<int> & c) {
   if (num_clauses) {
     BCheckerClause ** p = find (c), * d = *p;
     if (d) {
+      stats.deleted++;
       assert (!d->garbage && d->size);
       d->garbage = true;
       d->counterpart = 0;
