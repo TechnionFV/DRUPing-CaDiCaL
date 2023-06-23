@@ -256,6 +256,7 @@ bool Internal::decompose_round () {
       LOG (c, "unit %d after substitution", clause[0]);
       assign_unit (clause[0]);
       mark_garbage (c);
+      ///TODO: Might need to allocate a new unit clause
       new_unit = true;
       garbage++;
     } else if (c->literals[0] != clause[0] ||
@@ -274,6 +275,8 @@ bool Internal::decompose_round () {
       assert (c->size > 2);
       if (!c->redundant) mark_removed (c);
       if (proof) {
+        ///TODO: Cache counterpart here
+        assert (0);
         proof->add_derived_clause (clause);
         proof->delete_clause (c);
       }

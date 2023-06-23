@@ -68,6 +68,7 @@ void Internal::mark_added (Clause * c) {
 
 /*------------------------------------------------------------------------*/
 
+///TODO: Try avoid allocation of unit clauses and changing internal structures.
 Clause * Internal::new_unit_clause (int lit, bool red, int glue) {
 
   const int size = 1;
@@ -281,6 +282,7 @@ size_t Internal::shrink_clause (Clause * c, int new_size) {
 // reclaimed immediately.
 
 void Internal::deallocate_clause (Clause * c) {
+  assert (bchecker->invalidated_counterpart (c));
   char * p = (char*) c;
   if (arena.contains (p)) return;
   LOG (c, "deallocate pointer %p", (void*) c);
@@ -431,7 +433,7 @@ void Internal::add_new_original_clause () {
       }
     } else if (size == 1) {
       int ulit = clause[0];
-      c = new_unit_clause (ulit, false);
+      c = new_unit_clause (ulit, original.size() == 1 ? false : true);
       assign_original_unit (ulit);
     } else {
       c = new_clause (false);

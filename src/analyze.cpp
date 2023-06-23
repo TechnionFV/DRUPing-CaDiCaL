@@ -28,7 +28,7 @@ void Internal::learn_unit_clause (int lit) {
     if (bchecker) {
       assert (lit);
       assert (opts.checkproofbackward);
-      Clause * c = new_unit_clause (lit, false);
+      Clause * c = new_unit_clause (lit, true);
       bchecker->cache_counterpart (c);
     }
   }

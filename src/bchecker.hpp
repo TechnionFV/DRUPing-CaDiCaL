@@ -1,15 +1,13 @@
 #ifndef _bchecker_hpp_INCLUDED
 #define _bchecker_hpp_INCLUDED
 
-#include "observer.hpp"         // Alphabetically after 'checker'.
-
-/*------------------------------------------------------------------------*/
+#include "observer.hpp"
 
 namespace CaDiCaL {
 
 /*------------------------------------------------------------------------*/
 
-// This checker implements an offline backward DRUP proof checker enabled by
+// This observer implements an offline backward DRUP proof checking enabled by
 // 'opts.checkproofbackward' (requires 'opts.check' also to be enabled).
 
 /*------------------------------------------------------------------------*/
@@ -53,24 +51,32 @@ class BChecker : public Observer {
   BCheckerClause * new_clause (const vector<int> & simplified, const uint64_t hash);
   void delete_clause (BCheckerClause *);
 
-  BCheckerClause ** find (const vector<int> &);       // find clause position in hash table
-  BCheckerClause * insert (const vector<int> & c);    // insert clause in hash table
+  BCheckerClause ** find (const vector<int> &);         // find clause position in hash table
+  BCheckerClause * insert (const vector<int> & c);      // insert clause in hash table
+
+  // Number of freshly inserted clauses where counterparts haven't been cached yet.
+  unsigned int fresh_derived;
 
   // get the BCheckerClause instance. (intance is allocated if it doesn't exist).
   // 
   BCheckerClause * get_bchecker_clause (Clause *);
   BCheckerClause * get_bchecker_clause (vector<int> &);
 
-  // popping all trail literals up to and including the literal whose antecedent is 'c'.
-  //
   Clause * revive_internal_clause (BCheckerClause *);
   void stagnate_internal_clause (BCheckerClause *);
-  void shrink_internal_trail (const int);
+
+  // popping all trail literals up to and including the literal whose antecedent is 'c'.
+  //
   void undo_trail_core (Clause * c, int & trail_sz);
+  void shrink_internal_trail (const int);
   bool is_on_trail (Clause *);
-  bool validate_lemma (Clause *);
   void mark_core_trail_antecedents ();
+
+  bool validate_lemma (Clause *);
   void check_counterparts ();
+
+  bool validating;      // On during validating
+
 
   struct {
 
@@ -86,7 +92,6 @@ class BChecker : public Observer {
     int64_t searches;           // number of searched clauses in 'find'
 
   } stats;
-
 
 public:
 
@@ -104,9 +109,11 @@ public:
   //                2) While conflicting assumptions clause isn't actually allocated in the internal solver,
   //                   the proof would still be notified with it so its correctness can be checked.
   //                   In this case, we can simply create a new Clause object for the conflicting assumptions.
-  ///TODO:|NOTE: This is so fragile as it needs to be called right after
+  ///TODO:|NOTE: Caching counterparts is so fragile as it needs to be called right after
   //             proof->add_derived_clause... Need to find a better solution.
   void cache_counterpart (Clause *);
+  void update_moved_counterparts ();
+  bool invalidated_counterpart (Clause *);
 
   bool validate ();             // validate the clausal proof
 
