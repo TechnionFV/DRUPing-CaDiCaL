@@ -70,7 +70,6 @@ void Internal::mark_added (Clause * c) {
 
 ///TODO: Try avoid allocation of unit clauses and changing internal structures.
 Clause * Internal::new_unit_clause (int lit, bool red, int glue) {
-
   const int size = 1;
 
   if (glue > size) glue = size;
@@ -450,6 +449,20 @@ void Internal::add_new_original_clause () {
     }
   }
   clause.clear ();
+}
+
+Clause * Internal::new_learned_redundant_unit_clause (int lit, int glue) {
+  assert (clause.size () == 1);
+  external->check_learned_clause ();
+  Clause * res = new_unit_clause (lit, true, glue);
+  if (proof) {
+    proof->add_derived_clause (res);
+    if (bchecker) {
+      assert (opts.checkproofbackward);
+      bchecker->cache_counterpart (res);
+    }
+  }
+  return res;
 }
 
 // Add learned new clause during conflict analysis and watch it. Requires

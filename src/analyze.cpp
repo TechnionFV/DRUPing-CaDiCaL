@@ -20,6 +20,8 @@ void Internal::learn_empty_clause () {
   unsat = true;
 }
 
+///TODO: Need to decide when to allocate the unit clauses,
+// What to do with decisions and how to calculate reason for these clauses.
 void Internal::learn_unit_clause (int lit) {
   LOG ("learned unit clause %d", lit);
   external->check_learned_unit_clause (lit);
@@ -383,7 +385,8 @@ Clause * Internal::new_driving_clause (const int glue, int & jump) {
 
     iterating = true;
     jump = 0;
-    res = 0;
+    res = new_learned_redundant_unit_clause (clause[0], glue);
+    res->used = 1 + (glue <= opts.reducetier2glue); // Not sure
 
   } else {
 
@@ -786,7 +789,7 @@ void Internal::analyze () {
 
   STOP (analyze);
 
-  if (driving_clause && opts.eagersubsume)
+  if (driving_clause && driving_clause->size > 1 && opts.eagersubsume)
     eagerly_subsume_recently_learned_clauses (driving_clause);
 }
 

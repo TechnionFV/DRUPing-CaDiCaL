@@ -3,6 +3,49 @@
 
 namespace CaDiCaL {
 
+static void pc (const vector<int> c) {
+  for (unsigned i = 0; i < c.size(); i++)
+    printf ("%d ", c[i]);
+  printf ("\n");
+}
+
+static void pc (const BCheckerClause * c) {
+  for (unsigned i = 0; i < c->size; i++)
+    printf ("%d ", c->literals[i]);
+  printf ("\n");
+}
+
+static void pc (const Clause * c) {
+  for (int i = 0; i < c->size; i++)
+    printf ("%d ", c->literals[i]);
+  printf ("\n");
+}
+
+static void dump_trail (Internal * internal) {
+  printf ("trail dump:\n");
+  for (int i = internal->trail.size ()-1; i >= 0; i--) {
+    int lit = internal->trail[i];
+    assert (internal->val (lit) > 0);
+    if (!internal->active(lit)) continue;
+    Var & v = internal->var (lit);
+    printf ("%d, ", internal->trail[i]);
+    if (v.level) assert (v.reason);
+    Clause * reason = v.reason;
+    if (!reason) {
+      printf("0\n");
+      continue;
+    }
+    pc (reason);
+    for (int j = 0; reason->literals[0] != internal->trail[i] && j < reason->size; j++)
+      if (reason->literals[j] == internal->trail[i]) {
+        int x = reason->literals[j];
+        reason->literals[j] = reason->literals[0];
+        reason->literals[0] = x;
+      }
+    assert (reason->reason);
+    assert (reason->literals[0] == internal->trail[i] || reason->literals[1] == internal->trail[i]);
+  }
+}
 /*------------------------------------------------------------------------*/
 
 BChecker::BChecker (Internal * i)
@@ -166,6 +209,13 @@ BCheckerClause * BChecker::get_bchecker_clause (vector<int> & c) {
 
 /*------------------------------------------------------------------------*/
 
+static bool satisfied (Internal * internal, Clause * c) {
+  for (int i = 0; i < c->size; i++)
+    if (internal->val(c->literals[i]) > 0)
+      return true;
+  return false;
+}
+
 Clause * BChecker::revive_internal_clause (BCheckerClause * bc) {
 
   ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
@@ -184,12 +234,13 @@ Clause * BChecker::revive_internal_clause (BCheckerClause * bc) {
     internal->clause.push_back (bc->literals[i]);
     c = bc->counterpart = internal->new_clause (false);
     internal->clause.clear();
-    for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
-      if (!internal->val(c->literals[k]))
-      {
-        int l = c->literals[1];
-        c->literals[1] = c->literals[k], c->literals[k] = l;
-      }
+    if (satisfied (internal, c))
+      for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
+        if (!internal->val(c->literals[k]))
+        {
+          int l = c->literals[1];
+          c->literals[1] = c->literals[k], c->literals[k] = l;
+        }
     internal->watch_clause (c);
   }
   ///TODO: What about c->reason?
@@ -199,82 +250,66 @@ Clause * BChecker::revive_internal_clause (BCheckerClause * bc) {
 
 void BChecker::stagnate_internal_clause (BCheckerClause * bc) {
   assert (bc && !bc->garbage && bc->counterpart);
-  bc->garbage = true;
   if (bc->counterpart->size > 1) {
     internal->unwatch_clause (bc->counterpart);
   }
   internal->mark_garbage (bc->counterpart);
-  assert (bc->counterpart->garbage);
+  bc->garbage = true;
+  /// TODO: Invalidate counterpart reference or 
+  //  cancel the garbage collection during validation?
+  bc->counterpart = 0;
 }
 
 void  BChecker::shrink_internal_trail (const int trail_sz) {
   internal->trail.resize(trail_sz);
-  internal->propagated = internal->trail.size();
+  internal->propagated = trail_sz;
   /// TODO: Set internal->control[1].count correctly if needed.
-  if (internal->level) {
-    assert(internal->control.size () > 1);
+  if (internal->level) { /// incorrect code
+    assert(internal->control.size () == 1);
     internal->control[1].trail = internal->trail.size ();
   }
 }
 
-void BChecker::undo_trail_core (Clause * c, int & trail_sz) {
+void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
   LOG ("BCHECKER undoing trail core");
+  assert (c);
   assert (trail_sz > 0 && c->size > 0);
+  assert (trail_sz <= internal->trail.size());
   int clit = c->literals[0];
   while (internal->trail[trail_sz - 1] != clit)
   {
     assert(trail_sz > 0);
     int l = internal->trail[--trail_sz];
-    if (!internal->active (l)) continue;
-    assert (internal->val (l) > 0);
-    assert (internal->val (-l) < 0);
-    Var & v = internal->var (l);
-    assert (v.level > 0);
-    Clause * r = v.reason;
-    if (!r) continue;
-    assert (r->literals[0] == clit);
+    // if (!internal->active (l)) continue;
 
-    assert (internal->val (l));
     internal->unassign (l);
-    printf ("%d has been unassigned\n", l);
-    assert (!internal->val (l));
-    r->reason = false;
-    v.reason = 0;
-    assert (!v.reason && !r->reason);
 
-    /// TODO:|NOTE: In Minisat patch, the following code block is guarded
-    //  by if (core_units). Do we want to integrate this option here as well? 
-    r->core = true;
+    Clause * r = internal->var(l).reason;
+    if (!r) continue;
+
+    r->reason = false;
 
     for (int j = 1; j < r->size; j++)
     {
-      Var & x = internal->var(r->literals[j]);
-      assert(x.reason);
-      x.reason->core = true;
+      Clause * reason = internal->var(r->literals[j]).reason;
+      assert(reason);
+      reason->core = true;
     }
   }
-  assert(clit == internal->trail[trail_sz - 1]);
-
-  // { // Sanity check. To be removed later.
-    Var v = internal->var (clit);
-    Clause * r = v.reason;
-    assert (r && r == c);
-    assert (r->literals[0] == clit);
-  // }
-
-  internal->unassign (internal->trail[--trail_sz]);
-  r->reason = false;
-  v.reason = 0;
-  assert (!v.reason && !r->reason);
+  assert(clit == internal->trail[--trail_sz]);
+  internal->unassign (clit);
+  Clause * r = internal->var(clit).reason;
+  if (r) r->reason = false;
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  assert (c);
+  assert (c && c->size);
+  int lit = c->literals[0];
   bool old_school_reason = false;
-  if (internal->val(c->literals[0]) > 0)
-    if (internal->var(c->literals[0]).reason == c)
+  if (internal->val(lit) > 0)
+    if (internal->var(lit).reason == c)
       old_school_reason = true;
-  assert(old_school_reason == c->reason);
+  // assert(old_school_reason == c->reason); // This does't hold since we are caching reasons for level 0 fixed.
   return c->reason;
 }
 
@@ -284,10 +319,13 @@ bool BChecker::validate_lemma (Clause * lemma) {
   assert(lemma->core);
   assert(!is_on_trail(lemma));
 
-  for (int i = 0; i < lemma->size; i++)
-    internal->search_assume_decision(-lemma->literals[i]);
+  // dump_trail (internal);
 
-  // -- go to decision level 2
+  for (int i = 0; i < lemma->size; i++)
+    // if (!internal->val(lemma->literals[i])) {
+      internal->search_assume_decision(-lemma->literals[i]);
+      // printf ("%d\n", internal->control.size());
+    // }
 
   if (internal->propagate ())
   {
@@ -321,8 +359,10 @@ bool BChecker::validate_lemma (Clause * lemma) {
     if (x.level > 1)
       internal->mark(conflict->literals[i]);
     else if (x.level <= 0) {
-      assert (x.reason);
-      x.reason->core = true;
+      // assert (x.reason); // wrong
+      // printf ("found to be core by propagation: "), pc (x.reason);
+      if (x.reason)
+        x.reason->core = true;
     }
   }
 
@@ -408,6 +448,7 @@ void BChecker::check_counterparts () {
       if (bc->garbage) assert (!bc->counterpart);
       else {
         Clause * c = bc->counterpart;
+        assert (c);
         assert (c && !c->garbage && !c->moved);
         assert (unsigned(bc->counterpart->size) == bc->size);
       }
@@ -425,28 +466,38 @@ bool BChecker::validate () {
 
   ///TODO: Handle case where there are conflicting assumptions.
 
+  ///TODO: Reasons are different from Minsiat!
+
   check_counterparts ();
+
+  ///PROBLEM:
+  // fixed literals on the trail - (decision level 0) - are considered
+  // inactive literals and their reasons aren't protected.
+  internal->protect_reasons();
+
+  dump_trail (internal);
 
   Clause * last_conflict = internal->conflict;
   assert (last_conflict); // for workaround.
   last_conflict->core = true;
 
+  // Mark all conflict reasons as core
   for (int i = 0; i < last_conflict->size; i++) {
-    Var & x = internal->var(last_conflict->literals[i]);
-    ///NEXTSTEP:TODO: Must assert that unit clauses are set as reasons correctly in order for this to work.
-    if (x.reason)
-      x.reason->core = true;
+    assert (internal->val(last_conflict->literals[i]) < 0);
+    Var & v = internal->var(last_conflict->literals[i]);
+    Clause * reason = v.reason;
+    if (reason) reason->core = true;
   }
 
   internal->backtrack();
-  int trail_sz = internal->trail.size();
+  unsigned trail_sz = internal->trail.size();
 
   ///TODO: Set 'internal->level' appropriately all over the place!
-  for (int i = proof.size() - 2; i >= 0; i--) {
+  for (int i = proof.size() - 1; i >= 0; i--) {
     BCheckerClause * bc = proof[i];
     assert(bc && bc->size);
 
-    Clause * c = nullptr;
+    Clause * c = 0;
 
     // revive if deleted.
     if (bc->garbage) {
@@ -463,26 +514,18 @@ bool BChecker::validate () {
     assert (bc->counterpart == c);
 
     if (is_on_trail (c)) {
-      /// TODO: In Minisat patch, this is guarded by if (core_units). This might need here as well.
       c->core = true;
+      assert (internal->val(c->literals[0]) > 0);
       undo_trail_core (c, trail_sz);
+      assert (!internal->val (c->literals[0]));
     }
 
     stagnate_internal_clause (bc);
 
     if (c->core) {
       /// TODO: According to the paper, this should be conditioned with 'if not initial clause'.
-      if (c->size > 1)
-        assert (!internal->val (c->literals[0]));
       shrink_internal_trail (trail_sz);
-      for (int i = 0; i < c->size; i++) {
-        assert (0);
-        printf ("%d \n", c->literals[i]);
-        assert (!internal->val(c->literals[i]));
-      }
-      printf ("\n");
-      if (!validate_lemma (c))
-        return false;
+      if (!validate_lemma (c)) return false;
     }
   }
 
@@ -497,7 +540,13 @@ bool BChecker::validate () {
 
   ///TODO: Clean up internal clauses that were created for validation purposes.
 
-  ///TODO: Set validating flag to false to support incrementality.
+  ///TODO: Set validating flag to false to support incrementality before exiting this function's scope properly.
+
+  printf ("Core lemmas are: \n");
+  for (unsigned i = 0; i < internal->clauses.size (); i++)
+    if (internal->clauses[i]->core)
+      pc (internal->clauses[i]);
+
   return true;
 }
 
@@ -510,10 +559,9 @@ void BChecker::add_derived_clause (const vector<int> & c) {
   stats.derived++;
   if (c.empty ())
     inconsistent = true;
-  else {
+  else
     if (!num_clauses || !*find(c))
       proof.push_back (insert(c)), fresh_derived++;
-  }
   STOP (bchecking);
 }
 
