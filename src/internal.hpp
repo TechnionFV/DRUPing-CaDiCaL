@@ -532,6 +532,7 @@ struct Internal {
   void search_assign (int lit, Clause *);
   void search_assign_driving (int lit, Clause * reason);
   void search_assume_decision (int decision);
+  void search_assume_multiple_decisions (const vector<int> &);
   void assign_unit (int lit);
   bool propagate ();
 

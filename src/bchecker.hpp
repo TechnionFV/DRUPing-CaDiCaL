@@ -64,11 +64,14 @@ class BChecker : public Observer {
 
   Clause * revive_internal_clause (BCheckerClause *);
   void stagnate_internal_clause (BCheckerClause *);
+  void reactivate_fixed (int );
+  void put_trail_literal_in_place (Clause *);
 
+  void undo_trail_literal (int );
   // popping all trail literals up to and including the literal whose antecedent is 'c'.
   //
   void undo_trail_core (Clause * c, unsigned & trail_sz);
-  void shrink_internal_trail (const int);
+  bool shrink_internal_trail (const int);
   bool is_on_trail (Clause *);
   void mark_core_trail_antecedents ();
 

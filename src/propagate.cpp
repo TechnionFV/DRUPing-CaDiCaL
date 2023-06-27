@@ -63,7 +63,7 @@ void Internal::search_assign (int lit, Clause * reason) {
   else if (reason == decision_reason) lit_level = level, reason = 0;
   else if (opts.chrono) lit_level = assignment_level (lit, reason);
   else lit_level = level;
-  if (!lit_level) reason = 0; // NOTE: If we wan't to cancel this line, driving_clause->reason should be set to true.
+  // if (!lit_level) reason = 0; // NOTE: If we wan't to cancel this line, driving_clause->reason should be set to true.
 
   v.level = lit_level;
   v.trail = (int) trail.size ();
@@ -114,6 +114,17 @@ void Internal::search_assume_decision (int lit) {
   control.push_back (Level (lit, trail.size ()));
   LOG ("search decide %d", lit);
   search_assign (lit, decision_reason);
+}
+
+void Internal::search_assume_multiple_decisions (const vector<int> & decisions) {
+  require_mode (SEARCH);
+  assert (propagated == trail.size () && decisions.size ());
+  for (int lit : decisions) {
+    level++;
+    control.push_back (Level (lit, trail.size ()));
+    LOG ("search decide %d", lit);
+    search_assign (lit, decision_reason);
+  }
 }
 
 void Internal::search_assign_driving (int lit, Clause * c) {

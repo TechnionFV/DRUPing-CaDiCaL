@@ -94,10 +94,10 @@ void Internal::protect_reasons () {
   assert (!protected_reasons);
   size_t count = 0;
   for (const auto & lit : trail) {
-    if (!active (lit)) continue;
+    if (flags(lit).eliminated ()) assert (0);
+    // if (!active(lit)) continue;
     assert (val (lit));
     Var & v = var (lit);
-    assert (v.level > 0);
     Clause * reason = v.reason;
     if (!reason) continue;
     LOG (reason, "protecting assigned %d reason %p", lit, (void*) reason);
@@ -119,10 +119,10 @@ void Internal::unprotect_reasons () {
   assert (protected_reasons);
   size_t count = 0;
   for (const auto & lit : trail) {
-    if (!active (lit)) continue;
+    if (flags(lit).eliminated ()) continue;
+    // if (!active(lit)) continue;
     assert (val (lit));
     Var & v = var (lit);
-    assert (v.level > 0);
     Clause * reason = v.reason;
     if (!reason) continue;
     LOG (reason, "unprotecting assigned %d reason %p", lit, (void*) reason);
@@ -208,7 +208,8 @@ void Internal::update_reason_references () {
   LOG ("update assigned reason references");
   size_t count = 0;
   for (auto & lit : trail) {
-    if (!active (lit)) continue;
+    if (flags(lit).eliminated ()) continue;
+    // if (!active(lit)) continue;
     Var & v = var (lit);
     Clause * c = v.reason;
     if (!c) continue;
