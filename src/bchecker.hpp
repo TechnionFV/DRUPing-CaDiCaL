@@ -57,6 +57,10 @@ class BChecker : public Observer {
   // Number of freshly inserted clauses where counterparts haven't been cached yet.
   unsigned int fresh_derived;
 
+  // If true, include core unit clauses.
+  //
+  bool core_units;
+
   // get the BCheckerClause instance. (intance is allocated if it doesn't exist).
   // 
   BCheckerClause * get_bchecker_clause (Clause *);
@@ -98,7 +102,7 @@ class BChecker : public Observer {
 
 public:
 
-  BChecker (Internal *);
+  BChecker (Internal *, bool core_units = false);
   ~BChecker ();
 
   void add_derived_clause (const vector<int> &);

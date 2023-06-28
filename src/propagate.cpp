@@ -68,6 +68,14 @@ void Internal::search_assign (int lit, Clause * reason) {
   v.level = lit_level;
   v.trail = (int) trail.size ();
   v.reason = reason;
+  if (reason) {
+    ///PROBLEM: Understand why this is needed...
+    for (int i = 0; i < reason->size && reason->literals[0] != lit; i++) {
+      int z = reason->literals[0];
+      reason->literals[0] = reason->literals[i];
+      reason->literals[i] = z;
+    }
+  }
   if (!lit_level) learn_unit_clause (lit);  // increases 'stats.fixed'
   const signed char tmp = sign (lit);
   vals[idx] = tmp;

@@ -21,34 +21,14 @@ static void pc (const Clause * c) {
   printf ("\n");
 }
 
-static void dump_trail (Internal * internal) {
-  printf ("trail dump:\n");
-  for (int i = internal->trail.size ()-1; i >= 0; i--) {
-    int lit = internal->trail[i];
-    assert (internal->val (lit) > 0);
-    if (internal->flags(lit).eliminated ()) continue;
-    Var & v = internal->var (lit);
-    printf ("%d, ", internal->trail[i]);
-    if (v.level) assert (v.reason);
-    Clause * reason = v.reason;
-    if (!reason) continue; // Has to be original unit.
-    pc (reason);
-    for (int j = 0; reason->literals[0] != internal->trail[i] && j < reason->size; j++)
-      if (reason->literals[j] == internal->trail[i]) {
-        int x = reason->literals[j];
-        reason->literals[j] = reason->literals[0];
-        reason->literals[0] = x;
-      }
-    assert (reason->reason);
-    assert (reason->literals[0] == internal->trail[i] || reason->literals[1] == internal->trail[i]);
-  }
-}
 /*------------------------------------------------------------------------*/
 
-BChecker::BChecker (Internal * i)
+BChecker::BChecker (Internal * i, bool core_units)
 :
-  internal (i), inconsistent (false), num_clauses (0),
-  size_clauses (0), clauses (0), fresh_derived (0), validating (0)
+  internal (i), inconsistent (false),
+  num_clauses (0), size_clauses (0),
+  clauses (0), fresh_derived (0),
+  core_units (core_units), validating (0)
 {
   LOG ("BCHECKER new");
 
@@ -272,9 +252,9 @@ bool BChecker::shrink_internal_trail (const int trail_sz) {
     assert(internal->control.size () == 1);
   }
 
-  if (internal->level) /// revisit this
-    internal->control.resize(1);
-  internal->level = 0;
+  // if (internal->level) /// revisit this
+  //   internal->control.resize(1);
+  // internal->level = 0;
   internal->control[0].reset ();
   internal->control[0].trail = internal->trail.size ();
   return true;
@@ -327,11 +307,11 @@ void BChecker::undo_trail_literal (int lit) {
 
 void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
   LOG ("BCHECKER undoing trail core");
-  assert (c);
-  assert (trail_sz > 0 && c->size > 0);
+  assert (c && trail_sz > 0 && c->size > 0);
   assert (trail_sz <= internal->trail.size());
   int clit = c->literals[0];
   assert (internal->var(clit).reason == c);
+
   while (internal->trail[trail_sz - 1] != clit)
   {
     assert(trail_sz > 0);
@@ -340,7 +320,13 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
     undo_trail_literal (l);
 
     Clause * r = internal->var(l).reason;
-    if (r && r->core)
+
+    if (!r) continue;
+
+    if (core_units)
+      r->core = true;
+
+    if (r->core)
       for (int j = 1; j < r->size; j++)
       {
         Clause * reason = internal->var(r->literals[j]).reason;
@@ -373,7 +359,7 @@ bool BChecker::validate_lemma (Clause * lemma) {
     ///TODO: Might be a better way for doing this...
     ///TODO: Is this really necessary?
     internal->level++;
-    internal->control.push_back (Level ());
+    internal->control.push_back (Level (0, internal->trail.size()));
   }
 
 
@@ -383,22 +369,22 @@ bool BChecker::validate_lemma (Clause * lemma) {
   for (int i = 0; i < lemma->size; i++) {
     int lit = lemma->literals[i];
     if (!internal->val(lit))
-      decisions.push_back (lit);
+      decisions.push_back (-lit);
   }
 
-  if (decisions.size())
-    internal->search_assume_multiple_decisions (decisions);
+  assert (decisions.size());
+  internal->search_assume_multiple_decisions (decisions);
   assert (internal->level - 1 == decisions.size());
 
   if (internal->propagate ())
   {
-    assert (0);
-    return false;
+    // assert (0);
+    // return false;
     ///TODO: This might happen according to the Minisat patch. But why?
     // If propagate fails, it may be due to incrementality and missing
     // units. Update qhead and re-propagate the entire trail
     internal->propagated = 0;
-    if (!internal->propagate ()) {
+    if (internal->propagate ()) {
       internal->backtrack ();
       return false;
     }
@@ -414,7 +400,8 @@ bool BChecker::validate_lemma (Clause * lemma) {
     Var & x = internal->var(lit);
     if (x.level > 1 && !internal->marked (lit))
       internal->mark(lit);
-    else if (!x.level && x.reason) x.reason->core = true;
+    else if (!x.level && x.reason)
+      x.reason->core = true;
   }
 
   // mark all level0 literals in the lemma as core
@@ -431,7 +418,7 @@ bool BChecker::validate_lemma (Clause * lemma) {
     }
   }
 
-  for (int i = internal->trail.size() - 1; i >= internal->control[0].trail; i--)
+  for (int i = internal->trail.size() - 1; i >= internal->control[1].trail; i--)
   {
     int lit = internal->trail[i];
     Var & x = internal->var(lit);
@@ -449,8 +436,8 @@ bool BChecker::validate_lemma (Clause * lemma) {
 
     c->core = true;
 
-    assert (internal->val(c->literals[0]) > 0);
     assert (internal->var(c->literals[0]).reason == c);
+    assert (internal->val(c->literals[0]) > 0);
 
     for (int j = 1; j < c->size; j++)
     {
@@ -470,6 +457,7 @@ bool BChecker::validate_lemma (Clause * lemma) {
   }
 
   internal->backtrack ();
+  internal->conflict = 0;
   return true;
 }
 
@@ -553,7 +541,6 @@ bool BChecker::validate () {
 
   ///TODO: final conflict under assumptions
   // contains only one literal, mark all reasons.
-
   // Mark all conflict reasons as core
   for (int i = 0; i < last_conflict->size; i++) {
     assert (internal->val(last_conflict->literals[i]) < 0);
@@ -562,9 +549,11 @@ bool BChecker::validate () {
     if (reason) reason->core = true;
   }
 
-  internal->backtrack();
-  unsigned trail_sz = internal->trail.size();
   internal->unsat = false;
+  internal->backtrack();
+  internal->conflict = 0;
+
+  unsigned trail_sz = internal->trail.size();
 
   ///TODO: Set 'internal->level' appropriately all over the place!
   for (int i = proof.size() - 1; i >= 0; i--) {
@@ -589,7 +578,7 @@ bool BChecker::validate () {
     assert (bc->counterpart == c);
 
     if (is_on_trail (c)) {
-      c->core = true;
+      if (core_units) c->core = true;
       put_trail_literal_in_place (c);
       assert (internal->val(c->literals[0]) > 0);
       undo_trail_core (c, trail_sz);
@@ -601,7 +590,7 @@ bool BChecker::validate () {
     if (c->core) {
       /// TODO: According to the paper, this should be conditioned with 'if not initial clause'.
       (shrink_internal_trail (trail_sz));
-      if (!validate_lemma (c)) return false;
+      if (!validate_lemma (c)) goto exit;
     }
   }
 
@@ -617,9 +606,11 @@ bool BChecker::validate () {
   ///TODO: Clean up internal clauses that were created for validation purposes.
 
   printf ("Core lemmas are: \n");
-  for (unsigned i = 0; i < internal->clauses.size (); i++)
+  for (unsigned i = 0; i < internal->clauses.size (); i++) {
+    if (internal->clauses[i]->garbage) continue;
     if (internal->clauses[i]->core)
       pc (internal->clauses[i]);
+  }
 
   validating = false;
 
@@ -663,7 +654,19 @@ void BChecker::delete_clause (const vector<int> & c) {
       assert (d->size);
       if (d->garbage)
         assert (!d->counterpart);
+      else
+        assert (d->counterpart);
       d->garbage = true;
+      {
+        ///BUG: Internal solver isn't tracking allocated clauses of size 1.
+        // However, it does notify the proof when these clauses should be
+        // removed. Since the observer does track these clauses, it can delete them.
+        // The problem is that calling mark_garbage will result in a loop calls
+        // where the assertion for internal->clauses to  be empty is violated.
+
+        // if (d->counterpart->size == 1)
+          // internal->mark_garbage (d->counterpart);
+      }
       d->counterpart = 0;
     }
   }
