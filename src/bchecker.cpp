@@ -10,12 +10,20 @@ static void pc (const vector<int> c) {
 }
 
 static void pc (const BCheckerClause * c) {
+  if (!c) {
+    printf("0\n");
+    return;
+  }
   for (unsigned i = 0; i < c->size; i++)
     printf ("%d ", c->literals[i]);
   printf ("\n");
 }
 
 static void pc (const Clause * c) {
+  if (!c) {
+    printf("0\n");
+    return;
+  }
   for (int i = 0; i < c->size; i++)
     printf ("%d ", c->literals[i]);
   printf ("\n");
@@ -193,7 +201,7 @@ static bool satisfied (Internal * internal, Clause * c) {
   return false;
 }
 
-Clause * BChecker::revive_internal_clause (BCheckerClause * bc) {
+void BChecker::revive_internal_clause (BCheckerClause * bc) {
 
   ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
 
@@ -209,20 +217,20 @@ Clause * BChecker::revive_internal_clause (BCheckerClause * bc) {
     assert (internal->clause.empty());
     for (unsigned i = 0; i < bc->size; i++)
     internal->clause.push_back (bc->literals[i]);
+    ///TODO: Might be irredundant!! U should figure this out!
     c = bc->counterpart = internal->new_clause (false);
     internal->clause.clear();
-      if (satisfied (internal, c)) // Is this code block necessary?
-      for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
-        if (!internal->val(c->literals[k]))
-        {
-          int l = c->literals[1];
-          c->literals[1] = c->literals[k], c->literals[k] = l;
-        }
+    // if (satisfied (internal, c)) // Is this code block necessary?
+    //   for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
+    //     if (!internal->val(c->literals[k]))
+    //     {
+    //       int l = c->literals[1];
+    //       c->literals[1] = c->literals[k], c->literals[k] = l;
+    //     }
     internal->watch_clause (c);
   }
   assert (!c->reason);
   bc->garbage = false;
-  return c;
 }
 
 void BChecker::stagnate_internal_clause (BCheckerClause * bc) {
@@ -280,7 +288,7 @@ void BChecker::reactivate_fixed (int l) {
 // we can't ensure that c->literals[0] is the literal whose antecedent is c.
 ///TODO: Fix this in the internal solver and turn this into an assertion.
 void BChecker::put_trail_literal_in_place (Clause * c) {
-  assert (c && c->size >= 0 && c->reason);
+  assert (c && c->size > 0 && is_on_trail(c));
   int i = 0;
   while (internal->var(c->literals[0]).reason != c) {
     if (i == c->size) assert(0); // Should never reach here
@@ -301,8 +309,7 @@ void BChecker::undo_trail_literal (int lit) {
   internal->unassign (lit);
   assert (!internal->val (lit));
   assert (internal->active (lit));
-  Clause * r = internal->var(lit).reason;
-  if (r) r->reason = false;
+  internal->var(lit).reason = 0;
 }
 
 void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
@@ -314,13 +321,11 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
   while (internal->trail[trail_sz - 1] != clit)
   {
-    assert(trail_sz > 0);
+    assert(trail_sz > 1);
     int l = internal->trail[--trail_sz];
-
     undo_trail_literal (l);
 
     Clause * r = internal->var(l).reason;
-
     if (!r) continue;
 
     if (core_units)
@@ -343,7 +348,10 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  return c->reason;
+  ///NOTE: ->reason is only there to protect the clause from being deleted.
+  int lit = c->literals[0];
+  Clause * r = internal->var(lit).reason;
+  return internal->val(lit) > 0 && c == r;
 }
 
 bool BChecker::validate_lemma (Clause * lemma) {
@@ -378,11 +386,9 @@ bool BChecker::validate_lemma (Clause * lemma) {
 
   if (internal->propagate ())
   {
-    // assert (0);
-    // return false;
     ///TODO: This might happen according to the Minisat patch. But why?
-    // If propagate fails, it may be due to incrementality and missing
-    // units. Update qhead and re-propagate the entire trail
+    // -- If propagate fails, it may be due to incrementality and missing
+    // -- units. Update qhead and re-propagate the entire trail
     internal->propagated = 0;
     if (internal->propagate ()) {
       internal->backtrack ();
@@ -560,26 +566,18 @@ bool BChecker::validate () {
     BCheckerClause * bc = proof[i];
     assert(bc && bc->size);
 
-    Clause * c = 0;
-
     // revive if deleted.
     if (bc->garbage) {
-      c = revive_internal_clause (bc);
-      assert (!c->garbage);
-    } else {
-      // If the BCheckerClause instance (bc) hasn't been marked as garbage,
-      // its counterpart, which is a Clause reference, has to be a valid pointer.
-      assert (bc->counterpart);
-      assert (!bc->counterpart->garbage);
-      c = bc->counterpart;
+      revive_internal_clause (bc);
+      continue;
     }
 
-    assert (c && bc && !bc->garbage && !c->garbage);
-    assert (bc->counterpart == c);
+    Clause * c = bc->counterpart;
+    assert (c && !bc->garbage && !c->garbage);
 
     if (is_on_trail (c)) {
       if (core_units) c->core = true;
-      put_trail_literal_in_place (c);
+      // put_trail_literal_in_place (c);
       assert (internal->val(c->literals[0]) > 0);
       undo_trail_core (c, trail_sz);
       assert (!internal->val (c->literals[0]));
@@ -587,9 +585,10 @@ bool BChecker::validate () {
 
     stagnate_internal_clause (bc);
 
+    /// TODO: According to the paper, this should be conditioned with 'if not initial clause'.
+    //        However, this isn't being done in Minisat patch.
     if (c->core) {
-      /// TODO: According to the paper, this should be conditioned with 'if not initial clause'.
-      (shrink_internal_trail (trail_sz));
+      shrink_internal_trail (trail_sz);
       if (!validate_lemma (c)) goto exit;
     }
   }

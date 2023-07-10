@@ -66,7 +66,7 @@ class BChecker : public Observer {
   BCheckerClause * get_bchecker_clause (Clause *);
   BCheckerClause * get_bchecker_clause (vector<int> &);
 
-  Clause * revive_internal_clause (BCheckerClause *);
+  void revive_internal_clause (BCheckerClause *);
   void stagnate_internal_clause (BCheckerClause *);
   void reactivate_fixed (int );
   void put_trail_literal_in_place (Clause *);
@@ -83,7 +83,6 @@ class BChecker : public Observer {
   void check_counterparts ();
 
   bool validating;      // On during validating
-
 
   struct {
 
