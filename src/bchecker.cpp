@@ -220,13 +220,13 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
     ///TODO: Might be irredundant!! U should figure this out!
     c = bc->counterpart = internal->new_clause (false);
     internal->clause.clear();
-    // if (satisfied (internal, c)) // Is this code block necessary?
-    //   for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
-    //     if (!internal->val(c->literals[k]))
-    //     {
-    //       int l = c->literals[1];
-    //       c->literals[1] = c->literals[k], c->literals[k] = l;
-    //     }
+    if (satisfied (internal, c)) // Is this code block necessary?
+      for (int k = 1; k < c->size && internal->val(c->literals[1]); k++)
+        if (!internal->val(c->literals[k]))
+        {
+          int l = c->literals[1];
+          c->literals[1] = c->literals[k], c->literals[k] = l;
+        }
     internal->watch_clause (c);
   }
   assert (!c->reason);
