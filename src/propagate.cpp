@@ -63,17 +63,17 @@ void Internal::search_assign (int lit, Clause * reason) {
   else if (reason == decision_reason) lit_level = level, reason = 0;
   else if (opts.chrono) lit_level = assignment_level (lit, reason);
   else lit_level = level;
-  // if (!lit_level) reason = 0; // NOTE: If we wan't to cancel this line, driving_clause->reason should be set to true.
+  if (!bchecker && !lit_level) reason = 0;
 
   v.level = lit_level;
   v.trail = (int) trail.size ();
   v.reason = reason;
-  if (reason) {
-    ///PROBLEM: Understand why this is needed...
-    for (int i = 0; i < reason->size && reason->literals[0] != lit; i++) {
-      int z = reason->literals[0];
-      reason->literals[0] = reason->literals[i];
-      reason->literals[i] = z;
+  if (bchecker && reason) {
+    int * lits = reason->literals;
+    for (int i = 0; i < reason->size && lits[0] != lit; i++) {
+      if (lits[i] != lit) continue;
+      lits[i] = lits[0];
+      lits[0] = lit;
     }
   }
   if (!lit_level) learn_unit_clause (lit);  // increases 'stats.fixed'

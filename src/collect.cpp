@@ -41,8 +41,7 @@ void Internal::remove_falsified_literals (Clause * c) {
   for (i = c->begin (); num_non_false < 2 && i != end; i++)
     if (fixed (*i) >= 0) num_non_false++;
   if (num_non_false < 2) return;
-  if (proof)
-    proof->flush_clause (c);
+  if (proof) proof->flush_clause (c);
   literal_iterator j = c->begin ();
   for (i = j; i != end; i++) {
     const int lit = *j++ = *i, tmp = fixed (lit);
@@ -52,10 +51,7 @@ void Internal::remove_falsified_literals (Clause * c) {
     j--;
   }
   stats.collected += shrink_clause (c, j - c->begin ());
-  if (proof && bchecker) {
-    assert (opts.checkproofbackward);
-    bchecker->cache_counterpart (c);
-  }
+  if (proof && bchecker) bchecker->cache_counterpart (c);
 }
 
 // If there are new units (fixed variables) since the last garbage
@@ -94,10 +90,10 @@ void Internal::protect_reasons () {
   assert (!protected_reasons);
   size_t count = 0;
   for (const auto & lit : trail) {
-    if (flags(lit).eliminated ()) assert (0);
-    // if (!active(lit)) continue;
+    if (!bchecker && !active(lit)) continue;
     assert (val (lit));
     Var & v = var (lit);
+    assert (bchecker || v.level > 0);
     Clause * reason = v.reason;
     if (!reason) continue;
     LOG (reason, "protecting assigned %d reason %p", lit, (void*) reason);
@@ -119,10 +115,10 @@ void Internal::unprotect_reasons () {
   assert (protected_reasons);
   size_t count = 0;
   for (const auto & lit : trail) {
-    if (flags(lit).eliminated ()) continue;
-    // if (!active(lit)) continue;
+    if (!bchecker && !active(lit)) continue;
     assert (val (lit));
     Var & v = var (lit);
+    assert (bchecker || v.level > 0);
     Clause * reason = v.reason;
     if (!reason) continue;
     LOG (reason, "unprotecting assigned %d reason %p", lit, (void*) reason);
@@ -208,8 +204,7 @@ void Internal::update_reason_references () {
   LOG ("update assigned reason references");
   size_t count = 0;
   for (auto & lit : trail) {
-    if (flags(lit).eliminated ()) continue;
-    // if (!active(lit)) continue;
+    if (!bchecker && !active(lit)) continue;
     Var & v = var (lit);
     Clause * c = v.reason;
     if (!c) continue;
@@ -361,8 +356,7 @@ void Internal::copy_non_garbage_clauses () {
   flush_all_occs_and_watches ();
   update_reason_references ();
 
-  if (bchecker)
-    bchecker->update_moved_counterparts ();
+  if (bchecker) bchecker->update_moved_counterparts ();
 
   // Replace and flush clause references in 'clauses'.
   //
@@ -371,8 +365,7 @@ void Internal::copy_non_garbage_clauses () {
   for (; i != end; i++) {
     Clause * c = *i;
     if (c->collect ()) delete_clause (c);
-    else
-      assert (c->moved), *j++ = c->copy, deallocate_clause (c);
+    else assert (c->moved), *j++ = c->copy, deallocate_clause (c);
   }
   clauses.resize (j - clauses.begin ());
   if (clauses.size () < clauses.capacity ()/2) shrink_vector (clauses);
