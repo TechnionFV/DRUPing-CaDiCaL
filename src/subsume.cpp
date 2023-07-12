@@ -166,10 +166,7 @@ void Internal::strengthen_clause (Clause * c, int lit) {
   assert (new_end + 1 == c->end ()), (void) new_end;
   (void) shrink_clause (c, c->size - 1);
   c->used = true;
-  if (proof && bchecker) {
-    assert (opts.checkproofbackward);
-    bchecker->cache_counterpart (c);
-  }
+  if (proof && bchecker) bchecker->cache_counterpart (c);
   LOG (c, "strengthened");
   external->check_shrunken_clause (c);
 }

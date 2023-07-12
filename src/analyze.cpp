@@ -28,12 +28,10 @@ void Internal::learn_unit_clause (int lit) {
   if (proof) {
     proof->add_derived_unit_clause (lit);
     if (bchecker) {
-      assert (lit);
-      assert (opts.checkproofbackward);
       Clause * reason = var(lit).reason;
-      if (reason && reason->size == 1) {
+      if (reason && reason->size == 1)
         assert (reason->literals[0] == lit);
-      } else reason = new_unit_clause (lit, true);
+      else reason = new_unit_clause (lit, true);
       assert (reason);
       bchecker->cache_counterpart (reason);
     }

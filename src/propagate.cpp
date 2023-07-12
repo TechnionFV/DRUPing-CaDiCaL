@@ -129,9 +129,9 @@ void Internal::search_assume_multiple_decisions (const vector<int> & decisions) 
   assert (propagated == trail.size () && decisions.size ());
   for (int lit : decisions) {
     level++;
-    control.push_back (Level (lit, trail.size ()));
     LOG ("search decide %d", lit);
     search_assign (lit, decision_reason);
+    control.push_back (Level (lit, trail.size ()));
   }
 }
 

@@ -281,7 +281,6 @@ size_t Internal::shrink_clause (Clause * c, int new_size) {
 // reclaimed immediately.
 
 void Internal::deallocate_clause (Clause * c) {
-  // assert (!bchecker || bchecker->invalidated_counterpart (c));
   char * p = (char*) c;
   if (arena.contains (p)) return;
   LOG (c, "deallocate pointer %p", (void*) c);
@@ -434,6 +433,8 @@ void Internal::add_new_original_clause () {
       int ulit = clause[0];
       c = new_unit_clause (ulit, original.size() == 1 ? false : true);
       assign_original_unit (ulit);
+      assert (!active(ulit));
+      var(ulit).reason = c;
     } else {
       c = new_clause (false);
       watch_clause (c);
@@ -442,8 +443,7 @@ void Internal::add_new_original_clause () {
       external->check_learned_clause ();
       if (proof) {
         proof->add_derived_clause (c);
-        if (bchecker && opts.checkproofbackward)
-          bchecker->cache_counterpart (c);
+        if (bchecker) bchecker->cache_counterpart (c);
         proof->delete_clause (original);
       }
     }
@@ -457,10 +457,7 @@ Clause * Internal::new_learned_redundant_unit_clause (int lit, int glue) {
   Clause * res = new_unit_clause (lit, true, glue);
   if (proof) {
     proof->add_derived_clause (res);
-    if (bchecker) {
-      assert (opts.checkproofbackward);
-      bchecker->cache_counterpart (res);
-    }
+    if (bchecker) bchecker->cache_counterpart (res);
   }
   return res;
 }
@@ -480,10 +477,7 @@ Clause * Internal::new_learned_redundant_clause (int glue) {
   Clause * res = new_clause (true, glue);
   if (proof) {
     proof->add_derived_clause (res);
-    if (bchecker) {
-      assert (opts.checkproofbackward);
-      bchecker->cache_counterpart (res);
-    }
+    if (bchecker) bchecker->cache_counterpart (res);
   }
   assert (watching ());
   watch_clause (res);
@@ -497,10 +491,7 @@ Clause * Internal::new_hyper_binary_resolved_clause (bool red, int glue) {
   Clause * res = new_clause (red, glue);
   if (proof) {
     proof->add_derived_clause (res);
-    if (bchecker) {
-      assert (opts.checkproofbackward);
-      bchecker->cache_counterpart (res);
-    }
+    if (bchecker) bchecker->cache_counterpart (res);
   }
   assert (watching ());
   watch_clause (res);
@@ -515,10 +506,7 @@ Clause * Internal::new_hyper_ternary_resolved_clause (bool red) {
   Clause * res = new_clause (red, size);
   if (proof) {
     proof->add_derived_clause (res);
-    if (bchecker) {
-      assert (opts.checkproofbackward);
-      bchecker->cache_counterpart (res);
-    }
+    if (bchecker) bchecker->cache_counterpart (res);
   }
   assert (!watching ());
   return res;
@@ -534,10 +522,7 @@ Clause * Internal::new_clause_as (const Clause * orig) {
   assert (!orig->redundant || !orig->keep || res->keep);
   if (proof) {
     proof->add_derived_clause (res);
-    if (bchecker) {
-      assert (opts.checkproofbackward);
-      bchecker->cache_counterpart (res);
-    }
+    if (bchecker) bchecker->cache_counterpart (res);
   }
   assert (watching ());
   watch_clause (res);
@@ -552,10 +537,7 @@ Clause * Internal::new_resolved_irredundant_clause () {
   Clause * res = new_clause (false);
   if (proof) {
     proof->add_derived_clause (res);
-    if (bchecker) {
-      assert (opts.checkproofbackward);
-      bchecker->cache_counterpart (res);
-    }
+    if (bchecker) bchecker->cache_counterpart (res);
   }
   assert (!watching ());
   return res;
