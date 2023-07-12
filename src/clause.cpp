@@ -434,6 +434,8 @@ void Internal::add_new_original_clause () {
       int ulit = clause[0];
       c = new_unit_clause (ulit, original.size() == 1 ? false : true);
       assign_original_unit (ulit);
+      assert (!active(ulit));
+      var(ulit).reason = c;
     } else {
       c = new_clause (false);
       watch_clause (c);

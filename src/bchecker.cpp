@@ -260,11 +260,6 @@ bool BChecker::shrink_internal_trail (const int trail_sz) {
     assert(internal->control.size () == 1);
   }
 
-  // if (internal->level) /// revisit this
-  //   internal->control.resize(1);
-  // internal->level = 0;
-  internal->control[0].reset ();
-  internal->control[0].trail = internal->trail.size ();
   return true;
 }
 
@@ -309,6 +304,8 @@ void BChecker::undo_trail_literal (int lit) {
   internal->unassign (lit);
   assert (!internal->val (lit));
   assert (internal->active (lit));
+  assert (internal->var(lit).reason);
+  internal->var(lit).reason->reason = false;
   internal->var(lit).reason = 0;
 }
 
@@ -322,25 +319,22 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
   while (internal->trail[trail_sz - 1] != clit)
   {
     assert(trail_sz > 1);
+
     int l = internal->trail[--trail_sz];
-    undo_trail_literal (l);
 
     Clause * r = internal->var(l).reason;
-    if (!r) continue;
+    assert (r);
 
-    if (core_units)
-      r->core = true;
+    undo_trail_literal (l); // sets r->reason to false
+
+    if (core_units) r->core = true;
 
     if (r->core)
       for (int j = 1; j < r->size; j++)
       {
         Clause * reason = internal->var(r->literals[j]).reason;
-        {
-          ///TODO: Revisit this code. For this will always fail
-          // since these are decisions with 0 reason.
-          // assert (v.reason); // Might need fixing
-        }
-        if (reason) reason->core = true;
+        assert (reason);
+        reason->core = true;
       }
   }
   assert(clit == internal->trail[--trail_sz]);
@@ -348,10 +342,12 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  ///NOTE: ->reason is only there to protect the clause from being deleted.
-  int lit = c->literals[0];
-  Clause * r = internal->var(lit).reason;
-  return internal->val(lit) > 0 && c == r;
+  ///TODO: Other way of doing this - as in Minisat - is to check if val(c[0]) > 0 and var(c[0]).reason == c.
+  // However, this has caused some errors and didn't seem to be correct.
+  // From 6s102_10.cnf, a clause was "on trail" according to the Minisat check, but its
+  // reason flag was false and it's. Need to make sure checking reason flag is correct & safe!
+  assert (c);
+  return c->reason;
 }
 
 bool BChecker::validate_lemma (Clause * lemma) {
@@ -362,18 +358,14 @@ bool BChecker::validate_lemma (Clause * lemma) {
   assert (internal->propagated == internal->trail.size ());
 
   {
-    // Insert a dummy decision level to deferenciate literals that
+    // Insert a dummy decision level to differentiate literals which
     // got their value by propagation.
-    ///TODO: Might be a better way for doing this...
     ///TODO: Is this really necessary?
     internal->level++;
     internal->control.push_back (Level (0, internal->trail.size()));
   }
 
-
-  ///TODO: Assign the negation if lemma literals differently.
   vector <int> decisions;
-
   for (int i = 0; i < lemma->size; i++) {
     int lit = lemma->literals[i];
     if (!internal->val(lit))
@@ -384,6 +376,7 @@ bool BChecker::validate_lemma (Clause * lemma) {
   internal->search_assume_multiple_decisions (decisions);
   assert (internal->level - 1 == decisions.size());
 
+  assert(!internal->conflict);
   if (internal->propagate ())
   {
     ///TODO: This might happen according to the Minisat patch. But why?
@@ -404,41 +397,33 @@ bool BChecker::validate_lemma (Clause * lemma) {
   {
     int lit = conflict->literals[i];
     Var & x = internal->var(lit);
-    if (x.level > 1 && !internal->marked (lit))
-      internal->mark(lit);
-    else if (!x.level && x.reason)
+    if (x.level > 1 && !internal->marked (abs(lit)))
+      internal->mark(abs(lit));
+    else if (!x.level) {
+      assert (x.reason);
       x.reason->core = true;
+    }
   }
 
   // mark all level0 literals in the lemma as core
   for (int i = 0; i < lemma->size; i++) {
     int lit = lemma->literals[i];
     Var & v = internal->var(lit);
-    if (internal->val(lit) && !v.level) {
-      {
-        ///TODO: Revisit this code. For this will always fail
-        // since these are decisions with 0 reason.
-        // assert (v.reason); // Might need fixing
-      }
-      if (v.reason) v.reason->core = true;
-    }
+    if (internal->val(lit) && !v.level)
+      assert (v.reason), v.reason->core = true;
   }
 
-  for (int i = internal->trail.size() - 1; i >= internal->control[1].trail; i--)
+  for (int i = internal->trail.size() - 1; i >= internal->control.back().trail; i--)
   {
     int lit = internal->trail[i];
     Var & x = internal->var(lit);
-    if (!internal->marked(lit))
+    if (!internal->marked(abs(lit)))
       continue;
 
-    internal->unmark(lit);
+    internal->unmark(abs(lit));
+
     Clause * c = x.reason;
-    {
-      ///TODO: Revisit this code. For this will always fail
-      // since these are decisions with 0 reason.
-      // assert (v.reason); // Might need fixing
-    }
-    if (!c) continue; // Has to be an original unit or a decision..
+    assert (c);
 
     c->core = true;
 
@@ -450,15 +435,8 @@ bool BChecker::validate_lemma (Clause * lemma) {
       int lit = c->literals[j];
       Var & y = internal->var(lit);
       assert(internal->val(lit) < 0);
-      if (y.level > 1 && !internal->marked (lit)) internal->mark(lit);
-      if (!y.level) {
-        {
-          ///TODO: Revisit this code. For this will always fail
-          // since these are decisions with 0 reason.
-          // assert (v.reason); // Might need fixing
-        }
-        if (y.reason) y.reason->core = true;
-      }
+      if (y.level > 1 && !internal->marked (abs(lit))) internal->mark (abs(lit));
+      if (!y.level) assert (y.reason), y.reason->core = true;
     }
   }
 
