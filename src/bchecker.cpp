@@ -342,10 +342,8 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  ///TODO: Other way of doing this - as in Minisat - is to check if val(c[0]) > 0 and var(c[0]).reason == c.
-  // However, this has caused some errors and didn't seem to be correct.
-  // From 6s102_10.cnf, a clause was "on trail" according to the Minisat check, but its
-  // reason flag was false and it's. Need to make sure checking reason flag is correct & safe!
+  ///TODO: Need to make sure checking reason flag is correct & safe!
+  ///NOTE: Should be equivalent to return (val(c[0]) > 0 && var(c[0]).reason == c)
   assert (c);
   return c->reason;
 }
@@ -397,12 +395,11 @@ bool BChecker::validate_lemma (Clause * lemma) {
   {
     int lit = conflict->literals[i];
     Var & x = internal->var(lit);
+    assert (x.level > 0 || x.reason);
     if (x.level > 1 && !internal->marked (abs(lit)))
       internal->mark(abs(lit));
-    else if (!x.level) {
-      assert (x.reason);
+    else if (!x.level)
       x.reason->core = true;
-    }
   }
 
   // mark all level0 literals in the lemma as core
@@ -497,6 +494,21 @@ void BChecker::check_counterparts () {
         assert (unsigned(bc->counterpart->size) == bc->size);
       }
     }
+
+  assert (internal->protected_reasons);
+  int j = internal->trail.size() - 1;
+  for (int i = proof.size() - 1; i >= 0; i--) {
+    Clause* c = proof[i]->counterpart;
+    if (c && is_on_trail (c)) {
+      int clit = c->literals[0];
+      assert (internal->var(clit).reason == c);
+      while (internal->trail[j] != clit) j--;
+    }
+    if (j < 0) {
+      printf ("not in place: "), pc (c);
+      assert (0);
+    }
+  }
 }
 
 bool BChecker::validate () {
@@ -512,12 +524,12 @@ bool BChecker::validate () {
   ///NOTE: Assert that conflicting assumptions and failing constraint
   // are being cached as learnt clauses if any (revisit src/assume.cpp).
 
-  check_counterparts ();
-
   // 'protect_reasons' should protect fixed literal reasons as well.
   //
   internal->protect_reasons();
   internal->flush_all_occs_and_watches ();
+
+  check_counterparts ();
 
   Clause * last_conflict = internal->conflict;
   assert (last_conflict); // for workaround.
