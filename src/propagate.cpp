@@ -45,7 +45,7 @@ inline int Internal::assignment_level (int lit, Clause * reason) {
 }
 
 /*------------------------------------------------------------------------*/
-///TODO: Make sure it's safe to undo the inlining here.
+
 void Internal::search_assign (int lit, Clause * reason) {
 
   if (level) require_mode (SEARCH);

@@ -34,6 +34,7 @@ void Internal::learn_unit_clause (int lit) {
       else reason = new_unit_clause (lit, true);
       assert (reason);
       bchecker->cache_counterpart (reason);
+      var(lit).reason = reason;
     }
   }
   mark_fixed (lit);
@@ -387,8 +388,7 @@ Clause * Internal::new_driving_clause (const int glue, int & jump) {
 
     iterating = true;
     jump = 0;
-    res = new_learned_redundant_unit_clause (clause[0], glue);
-    res->used = 1 + (glue <= opts.reducetier2glue); // Not sure
+    res = 0;
 
   } else {
 
@@ -791,7 +791,7 @@ void Internal::analyze () {
 
   STOP (analyze);
 
-  if (driving_clause && driving_clause->size > 1 && opts.eagersubsume)
+  if (driving_clause && opts.eagersubsume)
     eagerly_subsume_recently_learned_clauses (driving_clause);
 }
 

@@ -423,6 +423,15 @@ void Internal::add_new_original_clause () {
   } else {
     size_t size = clause.size ();
     Clause * c = nullptr;
+    bool derived_original = original.size () > size;
+    ///TODO: Make sure it safe to move this code block to here
+    if (derived_original) {
+      external->check_learned_clause ();
+      if (proof) {
+        proof->add_derived_clause (clause);
+        proof->delete_clause (original);
+      }
+    }
     if (!size) {
       if (!unsat) {
         if (!original.size ()) VERBOSE (1, "found empty original clause");
@@ -431,21 +440,18 @@ void Internal::add_new_original_clause () {
       }
     } else if (size == 1) {
       int ulit = clause[0];
-      c = new_unit_clause (ulit, original.size() == 1 ? false : true);
+      if (bchecker) {
+        c = new_unit_clause (ulit, derived_original);
+        if (derived_original)
+          bchecker->cache_counterpart (c);
+      }
       assign_original_unit (ulit);
-      assert (!active(ulit));
-      var(ulit).reason = c;
+      if (bchecker) var(ulit).reason = c;
     } else {
       c = new_clause (false);
+      if (bchecker && derived_original)
+        bchecker->cache_counterpart (c);
       watch_clause (c);
-    }
-    if (original.size () > size) {
-      external->check_learned_clause ();
-      if (proof) {
-        proof->add_derived_clause (c);
-        if (bchecker) bchecker->cache_counterpart (c);
-        proof->delete_clause (original);
-      }
     }
   }
   clause.clear ();

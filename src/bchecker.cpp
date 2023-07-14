@@ -483,8 +483,8 @@ void BChecker::check_counterparts () {
       Clause * c = bc->counterpart;
       if (bc->garbage) assert (!c);
       else if (bc->size == 2 && c && c->garbage) {
-        /// The proof isn't notified with deleted binary
-        //  clauses until they are actually deallocated.
+        // The proof isn't notified with deleted binary
+        // clauses until they are actually deallocated.
         stats.deleted++;
         bc->garbage = true;
         bc->counterpart = 0;
@@ -495,6 +495,7 @@ void BChecker::check_counterparts () {
       }
     }
 
+  // workaround...
   assert (internal->protected_reasons);
   int j = internal->trail.size() - 1;
   for (int i = proof.size() - 1; i >= 0; i--) {
@@ -620,8 +621,7 @@ void BChecker::add_derived_clause (const vector<int> & c) {
   stats.derived++;
   if (c.empty ())
     inconsistent = true;
-  else
-    if (!num_clauses || !*find(c))
+  else if (!num_clauses || !*find(c))
       proof.push_back (insert(c)), fresh_derived++;
   STOP (bchecking);
 }
