@@ -20,8 +20,6 @@ void Internal::learn_empty_clause () {
   unsat = true;
 }
 
-///TODO: Need to decide when to allocate the unit clauses,
-// What to do with decisions and how to calculate reason for these clauses.
 void Internal::learn_unit_clause (int lit) {
   LOG ("learned unit clause %d", lit);
   external->check_learned_unit_clause (lit);
