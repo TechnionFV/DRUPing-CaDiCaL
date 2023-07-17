@@ -130,8 +130,8 @@ void Internal::search_assume_multiple_decisions (const vector<int> & decisions) 
   for (int lit : decisions) {
     level++;
     LOG ("search decide %d", lit);
+    control.push_back (Level (lit, trail.size()));
     search_assign (lit, decision_reason);
-    control.push_back (Level (lit, trail.size ()));
   }
 }
 

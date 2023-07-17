@@ -520,7 +520,6 @@ struct Internal {
   void mark_garbage (Clause *);
   void assign_original_unit (int);
   void add_new_original_clause ();
-  Clause * new_learned_redundant_unit_clause (int lit, int glue);
   Clause * new_learned_redundant_clause (int glue);
   Clause * new_hyper_binary_resolved_clause (bool red, int glue);
   Clause * new_clause_as (const Clause * orig);

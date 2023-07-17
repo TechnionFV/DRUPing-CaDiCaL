@@ -54,9 +54,6 @@ class BChecker : public Observer {
   BCheckerClause ** find (const vector<int> &);         // find clause position in hash table
   BCheckerClause * insert (const vector<int> & c);      // insert clause in hash table
 
-  // Number of freshly inserted clauses where counterparts haven't been cached yet.
-  unsigned int fresh_derived;
-
   // If true, include core unit clauses.
   //
   bool core_units;
@@ -79,6 +76,9 @@ class BChecker : public Observer {
   bool is_on_trail (Clause *);
   void mark_core_trail_antecedents ();
 
+  void mark_core (Clause *);
+
+  void conflict_analysis_core (const int limit, const int decisions);
   bool validate_lemma (Clause *);
   void check_counterparts ();
 
