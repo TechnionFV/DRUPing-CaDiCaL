@@ -341,30 +341,31 @@ bool BChecker::is_on_trail (Clause * c) {
 }
 
 void BChecker::mark_core (Clause * c) {
-  // for (auto bc : proof)
-  //   if (bc->counterpart == c) assert (c->redundant);
+  assert (c);
   c->core = true;
 }
 
-void BChecker::conflict_analysis_core (const int limit, const int decisions) {
+void BChecker::conflict_analysis_core (const int decisions) {
 
   Clause * conflict = internal->conflict;
   assert(conflict);
   mark_core (conflict);
 
-  auto got_value_by_propagation = [this](Var & v) {return v.trail > internal->control.back().trail;};
+  ///TODO: Check this is correct even when chronological backtraking is on (internal->opts.chrono).
+  // Need to check with https://cca.informatik.uni-freiburg.de/papers/MoehleBiere-SAT19.pdf
+  auto got_value_by_propagation = [this, decisions](Var & v) {
+    return /*v.trail > internal->control.back().trail */v.level > decisions;
+  };
 
   for (int i = 0; i < conflict->size; i++)
   {
     int lit = conflict->literals[i];
     Var & v = internal->var(lit);
     assert (v.level > 0 || v.reason);
-    if (got_value_by_propagation (v) && !internal->marked (abs(lit))) {
-      ///NOTE: Relates to internal->opts.chrono
-      assert (v.level == decisions);
+    if (got_value_by_propagation (v) > decisions /* && !marked */)
       internal->mark(abs(lit));
-    }
-    else if (!v.level) mark_core (v.reason);
+    else if (!v.level)
+      mark_core (v.reason);
   }
 
   for (int i = internal->trail.size() - 1; i > internal->control.back().trail; i--)
@@ -389,8 +390,10 @@ void BChecker::conflict_analysis_core (const int limit, const int decisions) {
       int lit = c->literals[j];
       Var & y = internal->var(lit);
       assert(internal->val(lit) < 0);
-      if (y.level > 1 && !internal->marked (abs(lit))) internal->mark (abs(lit));
-      if (!y.level) assert (y.reason), mark_core (y.reason);
+      if (got_value_by_propagation (y) && !internal->marked (abs(lit)))
+        internal->mark (abs(lit));
+      else if (!y.level)
+        mark_core (y.reason);
     }
   }
 }
@@ -431,7 +434,7 @@ bool BChecker::validate_lemma (Clause * lemma) {
     // }
   }
 
-  conflict_analysis_core (internal->control.back().trail, decisions.size());
+  conflict_analysis_core (decisions.size());
 
   internal->backtrack ();
   internal->conflict = 0;
@@ -489,10 +492,6 @@ bool BChecker::validate () {
 
   validating = true;
 
-  // workaround...
-  ///TODO: Need to handle levels in lemma validation if this is on
-  internal->opts.chrono = 0;
-
   ///NOTE: Assert that conflicting assumptions and failing constraint
   // are being cached as learnt clauses if any (revisit src/assume.cpp).
 
@@ -549,8 +548,8 @@ bool BChecker::validate () {
 
     stagnate_internal_clause (bc);
 
-    /// TODO: According to the paper, this should be conditioned with 'if not initial clause'.
-    //        However, this isn't being done in Minisat patch.
+    ///TODO: According to the paper, this should be conditioned with 'if not initial clause'.
+    //       However, this isn't being done in Minisat patch.
     if (c->core) {
       shrink_internal_trail (trail_sz);
       if (!validate_lemma (c)) goto exit;
