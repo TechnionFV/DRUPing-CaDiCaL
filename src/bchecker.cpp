@@ -202,6 +202,7 @@ static bool satisfied (Internal * internal, Clause * c) {
 
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
 void BChecker::revive_internal_clause (BCheckerClause * bc) {
+  // printf ("revivng: "), pc (bc);
   assert (bc->garbage && !bc->counterpart);
   Clause * c = nullptr;
   if (bc->size == 1) {
@@ -225,6 +226,7 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
 }
 
 void BChecker::stagnate_internal_clause (BCheckerClause * bc) {
+  // printf ("stagnating: "), pc (bc);
   assert (bc && !bc->garbage && bc->counterpart);
   Clause * c = bc->counterpart;
   if (c->size > 1)
@@ -345,7 +347,7 @@ void BChecker::mark_core (Clause * c) {
   c->core = true;
 }
 
-void BChecker::conflict_analysis_core (const int decisions) {
+void BChecker::conflict_analysis_core () {
 
   Clause * conflict = internal->conflict;
   assert(conflict);
@@ -353,8 +355,8 @@ void BChecker::conflict_analysis_core (const int decisions) {
 
   ///TODO: Check this is correct even when chronological backtraking is on (internal->opts.chrono).
   // Need to check with https://cca.informatik.uni-freiburg.de/papers/MoehleBiere-SAT19.pdf
-  auto got_value_by_propagation = [this, decisions](Var & v) {
-    return /*v.trail > internal->control.back().trail */v.level > decisions;
+  auto got_value_by_propagation = [this](Var & v) {
+    return v.trail > internal->control.back().trail && v.trail < internal->propagated;
   };
 
   for (int i = 0; i < conflict->size; i++)
@@ -362,13 +364,13 @@ void BChecker::conflict_analysis_core (const int decisions) {
     int lit = conflict->literals[i];
     Var & v = internal->var(lit);
     assert (v.level > 0 || v.reason);
-    if (got_value_by_propagation (v) > decisions /* && !marked */)
+    if (got_value_by_propagation (v) && !internal->marked (abs (lit)))
       internal->mark(abs(lit));
     else if (!v.level)
       mark_core (v.reason);
   }
 
-  for (int i = internal->trail.size() - 1; i > internal->control.back().trail; i--)
+  for (int i = internal->propagated-1; i > internal->control.back().trail; i--)
   {
     int lit = internal->trail[i];
     Var & x = internal->var(lit);
@@ -395,6 +397,31 @@ void BChecker::conflict_analysis_core (const int decisions) {
       else if (!y.level)
         mark_core (y.reason);
     }
+  }
+}
+
+static void dump_trail (Internal * internal, int verb = 0, int d = 0) {
+  printf ("trail is partitioned into %d partitions: ", internal->control.size());
+  for (int i = 0; i < internal->control.size(); i++)
+    if (i == internal->control.size()-1)
+      printf ("[%d-%d]\n", internal->control[i].trail, internal->trail.size()-1);
+    else
+      printf ("[%d-%d], ", internal->control[i].trail, internal->control[i+1].trail);
+  if (verb > 0) {
+    printf("last propagation has reasoned the following literals: ");
+    for (int i = internal->control.back().trail + d; i < internal->propagated; i++) {
+      printf ("%d ", internal->trail[i]);
+      if (verb > 1) {
+        Clause * r = internal->var (internal->trail[i]).reason;
+        assert (r);
+        printf ("from (");
+        for (int m = 0; m < r->size; m++)
+          printf (" %d", r->literals[m]);
+        printf (") ");
+      }
+    }
+    printf ("\n");
+    printf("last propagation has reasoned the following conflict: "); pc (internal->conflict);
   }
 }
 
@@ -434,7 +461,10 @@ bool BChecker::validate_lemma (Clause * lemma) {
     // }
   }
 
-  conflict_analysis_core (decisions.size());
+  // printf ("after propagation: ");
+  // dump_trail (internal, 2, decisions.size());
+
+  conflict_analysis_core ();
 
   internal->backtrack ();
   internal->conflict = 0;
@@ -491,6 +521,11 @@ bool BChecker::validate () {
   LOG ("BCHECKER starting validation");
 
   validating = true;
+
+  // printf ("befote validation: "), dump_trail (internal, 3);
+
+  // printf ("proof contains:\n");
+  // for (int i = proof.size()-1; i >= 0; i--) pc (proof[i]);
 
   ///NOTE: Assert that conflicting assumptions and failing constraint
   // are being cached as learnt clauses if any (revisit src/assume.cpp).

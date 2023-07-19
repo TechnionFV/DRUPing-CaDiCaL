@@ -78,7 +78,7 @@ class BChecker : public Observer {
 
   void mark_core (Clause *);
 
-  void conflict_analysis_core (const int decisions);
+  void conflict_analysis_core ();
   bool validate_lemma (Clause *);
   void check_counterparts ();
 
