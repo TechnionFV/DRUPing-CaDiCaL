@@ -176,28 +176,12 @@ BCheckerClause * BChecker::insert (const vector<int> & simplified) {
   return c;
 }
 
-BCheckerClause * BChecker::get_bchecker_clause (Clause * c) {
-  vector<int> dummy;
-  for (int i = 0; i < c->size; i++)
-    dummy.push_back (c->literals[i]);
-  return get_bchecker_clause (dummy);
-}
-
 BCheckerClause * BChecker::get_bchecker_clause (vector<int> & c) {
   if (!num_clauses)
     return insert (c);
   BCheckerClause ** p = find (c);
   assert (p);
   return !(*p) ? insert (c) : *p;
-}
-
-/*------------------------------------------------------------------------*/
-
-static bool satisfied (Internal * internal, Clause * c) {
-  for (int i = 0; i < c->size; i++)
-    if (internal->val(c->literals[i]) > 0)
-      return true;
-  return false;
 }
 
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
@@ -710,20 +694,6 @@ void BChecker::update_moved_counterparts () {
       }
     }
   STOP (bchecking);
-}
-
-///TODO: Drop this...
-bool BChecker::invalidated_counterpart (Clause * c) {
-  if (validating) return true;
-  if (inconsistent) return false;
-  START (bchecking);
-  assert (num_clauses);
-  vector<int> tmp;
-  for (int i = 0; i < c->size; i++) tmp.push_back (c->literals[i]);
-  BCheckerClause ** p = find (tmp), * d = *p;
-  STOP (bchecking);
-  ///PROBLEM: Might be duplicates and this deallocation is freeing only one of them...
-  return d ? d->counterpart == 0 : true;
 }
 
 /*------------------------------------------------------------------------*/

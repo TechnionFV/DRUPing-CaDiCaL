@@ -58,9 +58,8 @@ class BChecker : public Observer {
   //
   bool core_units;
 
-  // get the BCheckerClause instance. (intance is allocated if it doesn't exist).
+  // get the BCheckerClause instance. (isntance is allocated if doesn't exist).
   // 
-  BCheckerClause * get_bchecker_clause (Clause *);
   BCheckerClause * get_bchecker_clause (vector<int> &);
 
   void revive_internal_clause (BCheckerClause *);
@@ -119,7 +118,6 @@ public:
   //             proof->add_derived_clause... Need to find a better solution.
   void cache_counterpart (Clause *);
   void update_moved_counterparts ();
-  bool invalidated_counterpart (Clause *);
 
   bool validate ();             // validate the clausal proof
 
