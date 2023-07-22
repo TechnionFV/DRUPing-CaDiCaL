@@ -58,28 +58,22 @@ class BChecker : public Observer {
   //
   bool core_units;
 
-  // get the BCheckerClause instance. (isntance is allocated if doesn't exist).
-  // 
-  BCheckerClause * get_bchecker_clause (vector<int> &);
-
   void revive_internal_clause (BCheckerClause *);
   void stagnate_internal_clause (BCheckerClause *);
   void reactivate_fixed (int );
-  void put_trail_literal_in_place (Clause *);
 
   void undo_trail_literal (int );
   // popping all trail literals up to and including the literal whose antecedent is 'c'.
   //
   void undo_trail_core (Clause * c, unsigned & trail_sz);
   bool shrink_internal_trail (const int);
-  bool is_on_trail (Clause *);
+  bool is_on_trail (BCheckerClause *);
   void mark_core_trail_antecedents ();
 
   void mark_core (Clause *);
 
   void conflict_analysis_core ();
   bool validate_lemma (Clause *);
-  void check_counterparts ();
 
   bool validating;      // On during validating
 
@@ -100,6 +94,7 @@ class BChecker : public Observer {
 
 public:
 
+  void check_counterparts ();
   BChecker (Internal *, bool core_units = false);
   ~BChecker ();
 

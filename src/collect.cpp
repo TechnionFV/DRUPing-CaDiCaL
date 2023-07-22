@@ -41,6 +41,10 @@ void Internal::remove_falsified_literals (Clause * c) {
   for (i = c->begin (); num_non_false < 2 && i != end; i++)
     if (fixed (*i) >= 0) num_non_false++;
   if (num_non_false < 2) return;
+  printf ("flushing %lu: ", c);
+  for (int i = 0; i < c->size; i++)
+    printf ("%d ", c->literals[i]);
+  printf ("\n");
   if (proof) proof->flush_clause (c);
   literal_iterator j = c->begin ();
   for (i = j; i != end; i++) {

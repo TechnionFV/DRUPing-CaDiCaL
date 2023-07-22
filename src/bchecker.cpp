@@ -176,14 +176,6 @@ BCheckerClause * BChecker::insert (const vector<int> & simplified) {
   return c;
 }
 
-BCheckerClause * BChecker::get_bchecker_clause (vector<int> & c) {
-  if (!num_clauses)
-    return insert (c);
-  BCheckerClause ** p = find (c);
-  assert (p);
-  return !(*p) ? insert (c) : *p;
-}
-
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
 void BChecker::revive_internal_clause (BCheckerClause * bc) {
   // printf ("revivng: "), pc (bc);
@@ -256,24 +248,6 @@ void BChecker::reactivate_fixed (int l) {
   internal->stats.active++;
 }
 
-// Since the internal solver isn't caring about fixed literal reasons ordering,
-// we can't ensure that c->literals[0] is the literal whose antecedent is c.
-///TODO: Fix this in the internal solver and turn this into an assertion.
-void BChecker::put_trail_literal_in_place (Clause * c) {
-  assert (c && c->size > 0 && is_on_trail(c));
-  int i = 0;
-  while (internal->var(c->literals[0]).reason != c) {
-    if (i == c->size) assert(0); // Should never reach here
-    if (internal->var(c->literals[i]).reason == c) {
-      assert(internal->val(c->literals[i]) > 0);
-      int x = c->literals[i];
-      c->literals[i] = c->literals[0];
-      c->literals[0] = x;
-    }
-    i++;
-  }
-}
-
 void BChecker::undo_trail_literal (int lit) {
   assert (internal->val (lit) > 0);
   if (!internal->active (lit))
@@ -318,12 +292,11 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
   undo_trail_literal (clit);
 }
 
-bool BChecker::is_on_trail (Clause * c) {
-  ///TODO: Need to make sure checking reason flag is correct & safe!
-  ///NOTE: Should be equivalent to return (val(c[0]) > 0 && var(c[0]).reason == c)
-  bool cc = internal->val(c->literals[0]) > 0 && internal->var(c->literals[0]).reason == c;
-  assert (c && c->reason == cc);
-  return c->reason;
+bool BChecker::is_on_trail (BCheckerClause * bc) {
+  assert (internal->protected_reasons);
+  assert (bc);
+  int lit = bc->literals[0];
+  return internal->val(lit) > 0 && internal->var(lit).reason == bc->counterpart;
 }
 
 void BChecker::mark_core (Clause * c) {
@@ -412,8 +385,7 @@ static void dump_trail (Internal * internal, int verb = 0, int d = 0) {
 bool BChecker::validate_lemma (Clause * lemma) {
   assert (validating);
   assert(!internal->level);
-  assert(lemma->core);
-  assert(!is_on_trail(lemma));
+  assert(lemma && lemma->core);
   assert (internal->propagated == internal->trail.size ());
 
   vector <int> decisions;
@@ -438,11 +410,11 @@ bool BChecker::validate_lemma (Clause * lemma) {
     ///TODO: This might happen according to the Minisat patch.
     // -- If propagate fails, it may be due to incrementality and missing
     // -- units. Update qhead and re-propagate the entire trail
-    // internal->propagated = 0;
-    // if (internal->propagate ()) {
-    //   internal->backtrack ();
+    internal->propagated = 0;
+    if (internal->propagate ()) {
+      internal->backtrack ();
        return false;
-    // }
+    }
   }
 
   // printf ("after propagation: ");
@@ -478,22 +450,6 @@ void BChecker::check_counterparts () {
         assert (unsigned(bc->counterpart->size) == bc->size);
       }
     }
-
-  // workaround...
-  assert (internal->protected_reasons);
-  int j = internal->trail.size() - 1;
-  for (int i = proof.size() - 1; i >= 0; i--) {
-    Clause* c = proof[i]->counterpart;
-    if (c && is_on_trail (c)) {
-      int clit = c->literals[0];
-      assert (internal->var(clit).reason == c);
-      while (internal->trail[j] != clit) j--;
-    }
-    if (j < 0) {
-      printf ("not in place: "), pc (c);
-      assert (0);
-    }
-  }
 }
 
 bool BChecker::validate () {
@@ -557,7 +513,7 @@ bool BChecker::validate () {
     Clause * c = bc->counterpart;
     assert (c && !bc->garbage && !c->garbage);
 
-    if (is_on_trail (c)) {
+    if (is_on_trail (bc)) {
       if (core_units) mark_core (c);
       // put_trail_literal_in_place (c);
       assert (internal->val(c->literals[0]) > 0);
@@ -643,8 +599,8 @@ void BChecker::delete_clause (const vector<int> & c) {
         ///BUG: Internal solver isn't tracking allocated clauses of size 1.
         // However, it does notify the proof when these clauses should be
         // removed. Since the observer does track these clauses, it can delete them.
-        // The problem is that calling mark_garbage will result in a loop calls
-        // where the assertion for internal->clauses to  be empty is violated.
+        // The problem is that calling mark_garbage will result in a loop of calls
+        // where the assertion for internal->clauses to be empty is violated.
 
         // if (d->counterpart->size == 1)
           // internal->mark_garbage (d->counterpart);
@@ -663,6 +619,12 @@ void BChecker::cache_counterpart (Clause * c) {
   assert (proof.size ());
   BCheckerClause * bc = proof.back ();
   assert (bc && !bc->garbage && !c->garbage);
+  ///BUG: Overwriting an existing counterpart! The solution isn't trivial
+  // since more than one counterpart can be alive at the same time.
+  // Note delete_clause isn't aware of the reference that is being disallocated.
+  // This can be caused by:
+  // - deriving original clauses as a result of propagating original units
+  // - reducing/flushing false literals from a clause
   bc->counterpart = c;
   assert (unsigned(bc->counterpart->size) == bc->size);
   STOP (bchecking);

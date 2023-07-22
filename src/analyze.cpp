@@ -26,13 +26,16 @@ void Internal::learn_unit_clause (int lit) {
   if (proof) {
     proof->add_derived_unit_clause (lit);
     if (bchecker) {
-      Clause * reason = var(lit).reason;
-      if (reason && reason->size == 1)
-        assert (reason->literals[0] == lit);
-      else reason = new_unit_clause (lit, true);
-      assert (reason);
-      bchecker->cache_counterpart (reason);
-      var(lit).reason = reason;
+      Clause * uc = 0, * r = var(lit).reason;
+      if (r && r->size == 1)
+        uc = r;
+      else {
+        uc = new_unit_clause (lit, true);
+        if (!r) var(lit).reason = uc;
+      }
+      bchecker->cache_counterpart (uc);
+      assert (uc->size == 1 && uc->literals[0] == lit);
+      assert (var(lit).reason->literals[0] == lit);
     }
   }
   mark_fixed (lit);
