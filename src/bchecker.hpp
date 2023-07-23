@@ -15,7 +15,6 @@ namespace CaDiCaL {
 
 struct BCheckerClause {
   BCheckerClause* next;
-  // unordered_map<int, Clause *> ordered_counterparts;
   Clause * counterpart;
   uint64_t hash;
   unsigned size;
@@ -30,6 +29,9 @@ class BChecker {
   // stack of clausal proof
   //
   vector<BCheckerClause*> proof;
+
+  unordered_map<BCheckerClause *, vector<Clause *>> counterparts;
+  unordered_map<BCheckerClause *, pair<int, Clause *>> ordered_counterparts;
 
   bool inconsistent;            // found or added empty clause
 
