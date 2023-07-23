@@ -41,11 +41,9 @@ void Internal::remove_falsified_literals (Clause * c) {
   for (i = c->begin (); num_non_false < 2 && i != end; i++)
     if (fixed (*i) >= 0) num_non_false++;
   if (num_non_false < 2) return;
-  printf ("flushing %lu: ", c);
-  for (int i = 0; i < c->size; i++)
-    printf ("%d ", c->literals[i]);
-  printf ("\n");
   if (proof) proof->flush_clause (c);
+  ///TODO: Does bchecker care about order?
+  if (bchecker) bchecker->delete_clause (c);
   literal_iterator j = c->begin ();
   for (i = j; i != end; i++) {
     const int lit = *j++ = *i, tmp = fixed (lit);
@@ -55,7 +53,7 @@ void Internal::remove_falsified_literals (Clause * c) {
     j--;
   }
   stats.collected += shrink_clause (c, j - c->begin ());
-  if (proof && bchecker) bchecker->cache_counterpart (c);
+  if (bchecker) bchecker->add_derived_clause (c);
 }
 
 // If there are new units (fixed variables) since the last garbage

@@ -17,27 +17,15 @@ void Internal::learn_empty_clause () {
   LOG ("learned empty clause");
   external->check_learned_empty_clause ();
   if (proof) proof->add_derived_empty_clause ();
+  if (bchecker) bchecker->add_derived_empty_clause ();
   unsat = true;
 }
 
 void Internal::learn_unit_clause (int lit) {
   LOG ("learned unit clause %d", lit);
   external->check_learned_unit_clause (lit);
-  if (proof) {
-    proof->add_derived_unit_clause (lit);
-    if (bchecker) {
-      Clause * uc = 0, * r = var(lit).reason;
-      if (r && r->size == 1)
-        uc = r;
-      else {
-        uc = new_unit_clause (lit, true);
-        if (!r) var(lit).reason = uc;
-      }
-      bchecker->cache_counterpart (uc);
-      assert (uc->size == 1 && uc->literals[0] == lit);
-      assert (var(lit).reason->literals[0] == lit);
-    }
-  }
+  if (proof) proof->add_derived_unit_clause (lit);
+  if (bchecker) bchecker->add_derived_unit_clause (lit);
   mark_fixed (lit);
 }
 

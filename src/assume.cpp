@@ -186,6 +186,7 @@ void Internal::failing () {
         clause.pop_back();
       }
     }
+      assert (0 && "need to add above clauses to bchecker");
 
     clause.clear ();
   }

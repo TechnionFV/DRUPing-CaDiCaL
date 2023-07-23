@@ -275,11 +275,10 @@ bool Internal::decompose_round () {
       assert (c->size > 2);
       if (!c->redundant) mark_removed (c);
       if (proof) {
-        ///TODO: Cache counterpart here
-        assert (0);
         proof->add_derived_clause (clause);
         proof->delete_clause (c);
       }
+      assert (0 && "notify bchecker");
       size_t l;
       for (l = 2; l < clause.size (); l++)
         c->literals[l] = clause[l];

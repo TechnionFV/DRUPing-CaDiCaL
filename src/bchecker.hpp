@@ -2,6 +2,7 @@
 #define _bchecker_hpp_INCLUDED
 
 #include "observer.hpp"
+#include "unordered_map"
 
 namespace CaDiCaL {
 
@@ -14,6 +15,7 @@ namespace CaDiCaL {
 
 struct BCheckerClause {
   BCheckerClause* next;
+  // unordered_map<int, Clause *> ordered_counterparts;
   Clause * counterpart;
   uint64_t hash;
   unsigned size;
@@ -21,7 +23,7 @@ struct BCheckerClause {
   int literals[1];
 };
 
-class BChecker : public Observer {
+class BChecker {
 
   Internal * internal;
 
@@ -51,8 +53,11 @@ class BChecker : public Observer {
   BCheckerClause * new_clause (const vector<int> & simplified, const uint64_t hash);
   void delete_clause (BCheckerClause *);
 
+  BCheckerClause ** find (Clause *);         // find clause position in hash table
+  BCheckerClause * insert (Clause * c);      // insert clause in hash table
+
   BCheckerClause ** find (const vector<int> &);         // find clause position in hash table
-  BCheckerClause * insert (const vector<int> & c);      // insert clause in hash table
+  BCheckerClause * insert (const vector<int> &);      // insert clause in hash table
 
   // If true, include core unit clauses.
   //
@@ -62,18 +67,20 @@ class BChecker : public Observer {
   void stagnate_internal_clause (BCheckerClause *);
   void reactivate_fixed (int );
 
-  void undo_trail_literal (int );
   // popping all trail literals up to and including the literal whose antecedent is 'c'.
   //
   void undo_trail_core (Clause * c, unsigned & trail_sz);
-  bool shrink_internal_trail (const int);
+  void undo_trail_literal (int );
   bool is_on_trail (BCheckerClause *);
-  void mark_core_trail_antecedents ();
 
   void mark_core (Clause *);
-
+  void mark_core_trail_antecedents ();
   void conflict_analysis_core ();
+
+  bool shrink_internal_trail (const int);
   bool validate_lemma (Clause *);
+
+  void check_counterparts ();
 
   bool validating;      // On during validating
 
@@ -94,9 +101,13 @@ class BChecker : public Observer {
 
 public:
 
-  void check_counterparts ();
   BChecker (Internal *, bool core_units = false);
   ~BChecker ();
+
+  void add_derived_clause (Clause *);
+  void add_derived_unit_clause (const int);
+  void add_derived_empty_clause ();
+  void delete_clause (Clause *);
 
   void add_derived_clause (const vector<int> &);
   void delete_clause (const vector<int> &);

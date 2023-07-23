@@ -113,6 +113,34 @@ void BChecker::enlarge_clauses () {
   size_clauses = new_size_clauses;
 }
 
+BCheckerClause ** BChecker::find (Clause * c) {
+  stats.searches++;
+  BCheckerClause ** res, * bc;
+  const auto size = c->size;
+  vector<int> lits;
+  unordered_set<int> marks;
+  for (int i = 0; i < size; i++) {
+    lits.push_back (c->literals[i]);
+    marks.insert (lits[i]);
+  }
+  assert (marks.size () == size);
+  const uint64_t hash = compute_hash (lits);
+  const uint64_t h = reduce_hash (hash, size_clauses);
+  for (res = clauses + h; (bc = *res); res = &bc->next) {
+    if (bc->hash == hash && bc->size == size) {
+      if (bc->counterpart && bc->counterpart != c)
+        continue;
+      bool found = true;
+      const int * literals = c->literals;
+      for (unsigned i = 0; found && i != size; i++)
+        found = marks.count(literals[i]);
+      if (found) break;
+    }
+    stats.collisions++;
+  }
+  return res;
+}
+
 BCheckerClause ** BChecker::find (const vector<int> & simplified) {
   stats.searches++;
   BCheckerClause ** res, * c;
@@ -165,6 +193,21 @@ void BChecker::delete_clause (BCheckerClause * c) {
   delete [] (char*) c;
 }
 
+BCheckerClause * BChecker::insert (Clause * c) {
+  stats.insertions++;
+  if (num_clauses == size_clauses) enlarge_clauses ();
+  vector<int> lits;
+  for (int i = 0; i < c->size; i++)
+    lits.push_back (c->literals[i]);
+  uint64_t hash = compute_hash (lits);
+  const uint64_t h = reduce_hash (hash, size_clauses);
+  BCheckerClause * bc = new_clause (lits, hash);
+  bc->next = clauses[h];
+  bc->counterpart = c;
+  clauses[h] = bc;
+  return bc;
+}
+
 BCheckerClause * BChecker::insert (const vector<int> & simplified) {
   stats.insertions++;
   if (num_clauses == size_clauses) enlarge_clauses ();
@@ -178,7 +221,6 @@ BCheckerClause * BChecker::insert (const vector<int> & simplified) {
 
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
 void BChecker::revive_internal_clause (BCheckerClause * bc) {
-  // printf ("revivng: "), pc (bc);
   assert (bc->garbage && !bc->counterpart);
   Clause * c = nullptr;
   if (bc->size == 1) {
@@ -202,7 +244,6 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
 }
 
 void BChecker::stagnate_internal_clause (BCheckerClause * bc) {
-  // printf ("stagnating: "), pc (bc);
   assert (bc && !bc->garbage && bc->counterpart);
   Clause * c = bc->counterpart;
   if (c->size > 1)
@@ -352,7 +393,7 @@ void BChecker::conflict_analysis_core () {
       if (got_value_by_propagation (y) && !internal->marked (abs(lit)))
         internal->mark (abs(lit));
       else if (!y.level)
-        mark_core (y.reason);
+        assert (y.reason), mark_core (y.reason);
     }
   }
 }
@@ -432,7 +473,6 @@ void BChecker::mark_core_trail_antecedents () {
 }
 
 void BChecker::check_counterparts () {
-  assert (stats.counterparts == stats.derived - 1); // As no counterpart cached for the empty clause.
   for (uint64_t i = 0; i < size_clauses; i++)
     for (BCheckerClause * bc = clauses[i]; bc; bc = bc->next) {
       assert (bc);
@@ -447,7 +487,17 @@ void BChecker::check_counterparts () {
       } else {
         Clause * c = bc->counterpart;
         assert (c && !c->moved && !c->garbage);
+        unordered_set <int> marks1, marks2;
+        if (unsigned(bc->counterpart->size) != bc->size) {
+          pc (c);
+          pc (bc);
+        }
         assert (unsigned(bc->counterpart->size) == bc->size);
+        for (int l = 0; l < bc->size; l++) {
+          marks1.insert (bc->literals[l]);
+          marks2.insert (c->literals[l]);
+        }
+        assert (marks1 == marks2);
       }
     }
 }
@@ -560,24 +610,66 @@ exit:
 }
 
 /*------------------------------------------------------------------------*/
-
-void BChecker::add_derived_clause (const vector<int> & c) {
+int first_time = 1;
+void BChecker::add_derived_clause (Clause * c) {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER derived clause notification");
+  printf ("deriving %lu : ", c), pc (c);
+  if (c->size == 3 &&
+      c->literals[0] == 4625 &&
+      c->literals[1] == -4626 &&
+      c->literals[2] == -4629) {
+        // if (first_time == 2) assert (0);
+        first_time++;
+      }
   stats.derived++;
-  if (c.empty ())
-    inconsistent = true;
-  else {
-    BCheckerClause * bc = num_clauses > 0 ? *find(c) : 0;
-    proof.push_back (!bc ? insert (c) : bc);
-  }
+  assert (c && c->size > 1);
+  BCheckerClause * bc = num_clauses > 0 ? *find(c) : 0;
+  printf ("found %lu of counterpart %lu\n", bc, bc ? bc->counterpart : 0);
+  proof.push_back (!bc ? insert (c) : bc);
   STOP (bchecking);
 }
 
-void BChecker::delete_clause (const vector<int> & c) {
+void BChecker::add_derived_unit_clause (const int lit) {
   if (inconsistent) return;
   START (bchecking);
+  LOG (c, "BCHECKER derived clause notification");
+  printf ("deriving: "), pc ({lit});
+  stats.derived++;
+  assert (lit);
+  BCheckerClause * bc = num_clauses > 0 ? *find({lit}) : 0;
+  Clause * r = internal->var(lit).reason;
+  assert (!bc || r);
+  bc = !bc ? insert ({lit}) : bc;
+  proof.push_back (bc);
+  if (r && r->size == 1)
+    bc->counterpart = r;
+  else {
+    bc->counterpart = internal->new_unit_clause (lit, true);
+    if (!r) internal->var(lit).reason = bc->counterpart;
+  }
+  assert (bc->counterpart);
+  assert (bc->counterpart->size == 1);
+  assert (bc->counterpart->literals[0] == lit);
+  assert (internal->var(lit).reason->literals[0] == lit);
+  STOP (bchecking);
+}
+
+void BChecker::add_derived_empty_clause () {
+  if (inconsistent) return;
+  START (bchecking);
+  printf ("deriving: "), pc ((Clause *)(0));
+  LOG (c, "BCHECKER derived clause notification");
+  stats.derived++;
+  inconsistent = true;
+  STOP (bchecking);
+}
+
+void BChecker::delete_clause (Clause * c) {
+  if (inconsistent) return;
+  START (bchecking);
+  printf ("deleteing %lu : ", c), pc (c);
   LOG (c, "BCHECKER clause deletion notification");
   {
     // Original clauses are not being cached and might be deleted by the internal solver.
@@ -587,13 +679,12 @@ void BChecker::delete_clause (const vector<int> & c) {
   }
   if (num_clauses) {
     BCheckerClause ** p = find (c), * d = *p;
+    printf ("found %lu of counterpart %lu\n", d, d ? d->counterpart : 0);
     if (d) {
       stats.deleted++;
       assert (d->size);
-      if (d->garbage)
-        assert (!d->counterpart);
-      else
-        assert (d->counterpart);
+      if (d->garbage) assert (!d->counterpart);
+      else assert (d->counterpart);
       d->garbage = true;
       {
         ///BUG: Internal solver isn't tracking allocated clauses of size 1.
@@ -611,24 +702,7 @@ void BChecker::delete_clause (const vector<int> & c) {
   STOP (bchecking);
 }
 
-void BChecker::cache_counterpart (Clause * c) {
-  if (inconsistent) return;
-  START (bchecking);
-  LOG (c, "BCHECKER caching clause counterpart");
-  stats.counterparts++;
-  assert (proof.size ());
-  BCheckerClause * bc = proof.back ();
-  assert (bc && !bc->garbage && !c->garbage);
-  ///BUG: Overwriting an existing counterpart! The solution isn't trivial
-  // since more than one counterpart can be alive at the same time.
-  // Note delete_clause isn't aware of the reference that is being disallocated.
-  // This can be caused by:
-  // - deriving original clauses as a result of propagating original units
-  // - reducing/flushing false literals from a clause
-  bc->counterpart = c;
-  assert (unsigned(bc->counterpart->size) == bc->size);
-  STOP (bchecking);
-}
+/*------------------------------------------------------------------------*/
 
 void BChecker::update_moved_counterparts () {
   if (inconsistent) return;
