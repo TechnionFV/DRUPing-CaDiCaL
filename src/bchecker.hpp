@@ -15,7 +15,6 @@ namespace CaDiCaL {
 
 struct BCheckerClause {
   BCheckerClause* next;
-  Clause * counterpart;
   uint64_t hash;
   unsigned size;
   bool garbage;
@@ -28,10 +27,21 @@ class BChecker {
 
   // stack of clausal proof
   //
-  vector<BCheckerClause*> proof;
+  vector<pair<BCheckerClause*, bool>> proof;
 
-  unordered_map<BCheckerClause *, vector<Clause *>> counterparts;
-  unordered_map<BCheckerClause *, pair<int, Clause *>> ordered_counterparts;
+  // stack of clausal proof counterparts accordingly
+  //
+  vector<Clause*> counterparts;
+
+  // for each counterpart 'c', 'ordering[c]' contains all matching stack indexes
+  //
+  unordered_map<Clause *, vector<int>> ordering;
+
+  BCheckerClause * get_bchecker_clause (Clause * c);
+  BCheckerClause * get_bchecker_clause (int lit);
+
+  void invalidate_counterpart (Clause * c);
+  void append_lemma (BCheckerClause* bc, Clause * c);
 
   bool inconsistent;            // found or added empty clause
 
@@ -66,23 +76,26 @@ class BChecker {
   bool core_units;
 
   void revive_internal_clause (BCheckerClause *);
-  void stagnate_internal_clause (BCheckerClause *);
+  void stagnate_internal_clause (const int i);
   void reactivate_fixed (int );
 
   // popping all trail literals up to and including the literal whose antecedent is 'c'.
   //
   void undo_trail_core (Clause * c, unsigned & trail_sz);
   void undo_trail_literal (int );
-  bool is_on_trail (BCheckerClause *);
+  bool is_on_trail (Clause *);
+
+  void conflict_analysis_core ();
 
   void mark_core (Clause *);
   void mark_core_trail_antecedents ();
-  void conflict_analysis_core ();
+  void put_units_back ();
 
   bool shrink_internal_trail (const int);
+  void clear ();
   bool validate_lemma (Clause *);
 
-  void check_counterparts ();
+  void check_data ();
 
   bool validating;      // On during validating
 
@@ -103,7 +116,7 @@ class BChecker {
 
 public:
 
-  BChecker (Internal *, bool core_units = false);
+  BChecker (Internal *, bool core_units = 0);
   ~BChecker ();
 
   void add_derived_clause (Clause *);
@@ -111,20 +124,6 @@ public:
   void add_derived_empty_clause ();
   void delete_clause (Clause *);
 
-  void add_derived_clause (const vector<int> &);
-  void delete_clause (const vector<int> &);
-
-  ///CONSULT:|NOTE: In most of the palces were the proof is notified with a new learned clause,
-  //                the Clause reference can easily be obtained. However, there are two
-  //                cases were this does not hold:
-  //                1) When performing a round of Tarjan's algorithm (equivalent literal substitution)
-  //                   in decompose.cpp.. Need to consult..
-  //                2) While conflicting assumptions clause isn't actually allocated in the internal solver,
-  //                   the proof would still be notified with it so its correctness can be checked.
-  //                   In this case, we can simply create a new Clause object for the conflicting assumptions.
-  ///TODO:|NOTE: Caching counterparts is so fragile as it needs to be called right after
-  //             proof->add_derived_clause... Need to find a better solution.
-  void cache_counterpart (Clause *);
   void update_moved_counterparts ();
 
   bool validate ();             // validate the clausal proof
