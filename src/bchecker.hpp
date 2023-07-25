@@ -9,7 +9,7 @@ namespace CaDiCaL {
 /*------------------------------------------------------------------------*/
 
 // This observer implements an offline backward DRUP proof checking enabled by
-// 'opts.checkproofbackward' (requires 'opts.check' also to be enabled).
+// 'opts.bcheck'.
 
 /*------------------------------------------------------------------------*/
 

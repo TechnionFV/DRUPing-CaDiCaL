@@ -602,7 +602,7 @@ int Internal::solve (bool preprocess_only) {
 
 
   // workaround...
-  if (res == 20 && opts.checkproofbackward && bchecker) {
+  if (res == 20 && opts.bcheck && bchecker) {
     printf ("Basel: validating: %d\n", bchecker->validate ());
   }
 
