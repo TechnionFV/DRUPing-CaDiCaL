@@ -42,8 +42,7 @@ void Internal::remove_falsified_literals (Clause * c) {
     if (fixed (*i) >= 0) num_non_false++;
   if (num_non_false < 2) return;
   if (proof) proof->flush_clause (c);
-  ///TODO: Does bchecker care about order?
-  if (bchecker) bchecker->delete_clause (c);
+  if (bchecker) bchecker->flush_clause (c);
   literal_iterator j = c->begin ();
   for (i = j; i != end; i++) {
     const int lit = *j++ = *i, tmp = fixed (lit);
@@ -53,7 +52,6 @@ void Internal::remove_falsified_literals (Clause * c) {
     j--;
   }
   stats.collected += shrink_clause (c, j - c->begin ());
-  if (bchecker) bchecker->add_derived_clause (c);
 }
 
 // If there are new units (fixed variables) since the last garbage
@@ -93,6 +91,7 @@ void Internal::protect_reasons () {
   size_t count = 0;
   for (const auto & lit : trail) {
     if (!bchecker && !active(lit)) continue;
+    ///TODO: assert (!flags(lit).eliminated ());
     assert (val (lit));
     Var & v = var (lit);
     assert (bchecker || v.level > 0);

@@ -172,6 +172,7 @@ BCheckerClause * BChecker::new_clause (const vector<int> & simplified, const uin
   res->next = 0;
   res->hash = hash;
   res->size = size;
+  res->original = false;
   int * literals = res->literals;
   int * p = literals;
   for (const auto & lit : simplified)
@@ -199,6 +200,7 @@ BCheckerClause * BChecker::insert (Clause * c) {
   const uint64_t h = reduce_hash (hash, size_clauses);
   BCheckerClause * bc = new_clause (lits, hash);
   bc->next = clauses[h];
+  bc->original = !c->redundant;
   clauses[h] = bc;
   return bc;
 }
@@ -223,10 +225,9 @@ static bool satisfied (Internal * internal, Clause * c) {
 
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
 void BChecker::revive_internal_clause (BCheckerClause * bc) {
-  Clause * c = nullptr;
   if (bc->size == 1) {
     int lit = bc->literals[0];
-    c = internal->new_unit_clause (lit, false);
+    Clause * c = internal->new_unit_clause (lit, !bc->original);
     if (!internal->val (lit))
       internal->search_assign (lit, c);
   } else {
@@ -234,7 +235,7 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
     assert (clause.empty());
     for (unsigned i = 0; i < bc->size; i++)
       clause.push_back (bc->literals[i]);
-    c = internal->new_clause (true);
+    Clause * c = internal->new_clause (!bc->original);
     clause.clear();
     if (satisfied (internal, c)) {
       for (int i = 0; i < c->size && internal->val(c->literals[1]); i++) {
@@ -341,7 +342,7 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  assert (internal->protected_reasons);
+  assert (internal->protected_reasons && !c->garbage);
   return c->reason;
 }
 
@@ -376,13 +377,13 @@ void BChecker::conflict_analysis_core () {
   for (int i = internal->propagated-1; i > internal->control.back().trail; i--)
   {
     int lit = internal->trail[i];
-    Var & x = internal->var(lit);
+    Var & v = internal->var(lit);
     if (!internal->marked(abs(lit)))
       continue;
 
     internal->unmark(abs(lit));
 
-    Clause * c = x.reason;
+    Clause * c = v.reason;
     assert (c);
 
     mark_core (c);
@@ -398,7 +399,7 @@ void BChecker::conflict_analysis_core () {
       if (got_value_by_propagation (y) && !internal->marked (abs(lit)))
         internal->mark (abs(lit));
       else if (!y.level)
-        assert (y.reason), mark_core (y.reason);
+        mark_core (y.reason);
     }
   }
 }
@@ -451,11 +452,11 @@ bool BChecker::validate_lemma (Clause * lemma) {
     ///TODO: This might happen according to the Minisat patch.
     // -- If propagate fails, it may be due to incrementality and missing
     // -- units. Update qhead and re-propagate the entire trail
-    internal->propagated = 0;
-    if (internal->propagate ()) {
-      internal->backtrack ();
+    // internal->propagated = 0;
+    // if (internal->propagate ()) {
+    //   internal->backtrack ();
        return false;
-    }
+    // }
   }
 
   for (int i = 0; i < lemma->size; i++)
@@ -494,8 +495,13 @@ void BChecker::check_data () {
     Clause * c = counterparts[i];
     assert (bc && (!deleted || !c));
     if (!deleted) {
-      assert (c);
-      auto & indexes = ordering[c];
+      assert (c->size == 2 || !c->garbage);
+      if (c->garbage) {
+        invalidate_counterpart (c);
+        deleted_lemmas++;
+        continue;
+      }
+      auto & indexes = cp_ordering[c];
       assert (indexes.size() == 1);
       bool found = false;
       for (int j = 0; j < indexes.size() && !found; j++)
@@ -535,7 +541,7 @@ bool BChecker::validate () {
     internal->protect_reasons();
   internal->flush_all_occs_and_watches ();
 
-  check_data  ();
+  check_data ();
 
   Clause * last_conflict = internal->conflict;
   assert (last_conflict); // for workaround.
@@ -560,7 +566,8 @@ bool BChecker::validate () {
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
 
-    assert(bc && bc->size);
+    assert (bc && bc->size);
+    assert (!deleted || !c);
 
     if (deleted) {
       revive_internal_clause (bc);
@@ -578,7 +585,8 @@ bool BChecker::validate () {
 
     ///TODO: According to the paper, this should be conditioned with 'if not initial clause'.
     //       However, this isn't being done in Minisat patch.
-    if (c->core) {
+    if (c->core && c->redundant) {
+      // assert (c->redundant);
       shrink_internal_trail (trail_sz);
       if (!validate_lemma (c)) goto exit;
     }
@@ -613,17 +621,26 @@ exit:
 /*------------------------------------------------------------------------*/
 
 void BChecker::invalidate_counterpart (Clause * c) {
+  assert (c);
   assert (proof.size() == counterparts.size());
-  vector<int> & indexes = ordering[c];
-  assert (indexes.size());
+  vector<int> & indexes = cp_ordering[c];
+  // I don't expect the internal solver to delete the same reference twice.
+  assert (!validating || indexes.size() == 1);
   for (int i : indexes) {
     assert (i >= 0);
     assert (i < proof.size());
     assert (counterparts[i] == c);
+    assert (proof[i].second == false);
     proof[i].second = true;
     counterparts[i] = 0;
   }
   indexes.clear ();
+}
+
+BCheckerClause * BChecker::get_bchecker_clause (const vector<int> & c) {
+  BCheckerClause * bc = num_clauses > 0 ? *find(c) : 0;
+  if (!bc) bc = insert (c);
+  return bc;
 }
 
 BCheckerClause * BChecker::get_bchecker_clause (Clause * c) {
@@ -639,9 +656,12 @@ BCheckerClause * BChecker::get_bchecker_clause (int lit) {
 }
 
 void BChecker::append_lemma (BCheckerClause * bc, Clause * c) {
-  assert (bc && c);
-  ordering[c].push_back (proof.size());
-  proof.push_back ({bc, false});
+  assert (bc);
+  bool deleted = c == 0;
+  if (deleted) stats.deleted++;
+  else stats.derived++;
+  cp_ordering[c].push_back (proof.size());
+  proof.push_back ({bc, deleted});
   counterparts.push_back (c);
   assert (proof.size() == counterparts.size());
 }
@@ -652,7 +672,7 @@ void BChecker::add_derived_clause (Clause * c) {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER derived clause notification");
-  stats.derived++;
+  assert (c->redundant);
   assert (c && c->size > 1);
   BCheckerClause * bc = get_bchecker_clause (c);
   assert (bc);
@@ -664,7 +684,6 @@ void BChecker::add_derived_unit_clause (const int lit) {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER derived clause notification");
-  stats.derived++;
   assert (lit);
   BCheckerClause * bc = get_bchecker_clause (lit);
   Clause * r = internal->var(lit).reason;
@@ -684,8 +703,60 @@ void BChecker::add_derived_empty_clause () {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER derived clause notification");
-  stats.derived++;
   inconsistent = true;
+  STOP (bchecking);
+}
+
+/*------------------------------------------------------------------------*/
+
+void BChecker::strengthen_clause (Clause * c, int lit) {
+  if (inconsistent) return;
+  START (bchecking);
+  assert (c && lit);
+  LOG (c, "BCHECKER strengthen by removing %d in", lit);
+  BCheckerClause * bc = get_bchecker_clause (c);
+  vector<int> strengthened;
+  for (int i = 0; i < c->size; i++) {
+    int internal_lit = c->literals[i];
+    if (internal_lit != lit)
+      strengthened.push_back (internal_lit);
+  }
+  BCheckerClause * strengthened_bc = get_bchecker_clause (strengthened);
+  invalidate_counterpart (c);
+  append_lemma (strengthened_bc, c);
+  append_lemma (bc, 0);
+  STOP (bchecking);
+}
+
+void BChecker::flush_clause (Clause * c) {
+  if (inconsistent) return;
+  START (bchecking);
+  LOG (c, "BCHECKER flushing falsified literals in");
+  assert (c);
+  BCheckerClause * bc = get_bchecker_clause (c);
+  vector<int> flushed;
+  for (int i = 0; i < c->size; i++) {
+    int internal_lit = c->literals[i];
+    if (internal->fixed (internal_lit) >= 0)
+      flushed.push_back (internal_lit);
+  }
+  BCheckerClause * flushed_bc = get_bchecker_clause (flushed);
+  invalidate_counterpart (c);
+  append_lemma (flushed_bc, c);
+  append_lemma (bc, 0);
+  STOP (bchecking);
+}
+
+/*------------------------------------------------------------------------*/
+
+void BChecker::delete_clause (const vector<int> & c, bool original) {
+  if (inconsistent) return;
+  START (bchecking);
+  LOG (c, "BCHECKER clause deletion notification");
+  assert (!num_clauses || !*find (c));
+  BCheckerClause * bc = insert (c);
+  bc->original = original;
+  append_lemma (bc, 0);
   STOP (bchecking);
 }
 
@@ -693,30 +764,9 @@ void BChecker::delete_clause (Clause * c) {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER clause deletion notification");
-  {
-    // Original clauses are not being cached and might be deleted by the internal solver.
-    // Therefore, if the clause isn't in bchecker db, it has to be an original clause.
-    ///TODO: Consider caching original clauses too so it would be possible to assert
-    // that deleted clauses do exist as a sanity check.
-  }
-  if (num_clauses) {
-    BCheckerClause ** p = find (c), * d = *p;
-    if (d) {
-      stats.deleted++;
-      invalidate_counterpart (c);
-      assert (d->size);
-      {
-        ///BUG: Internal solver isn't tracking allocated clauses of size 1.
-        // However, it does notify the proof when these clauses should be
-        // removed. Since the observer does track these clauses, it can delete them.
-        // The problem is that calling mark_garbage will result in a loop of calls
-        // where the assertion for internal->clauses to be empty is violated.
-
-        // if (d->counterpart->size == 1)
-          // internal->mark_garbage (d->counterpart);
-      }
-    }
-  }
+  BCheckerClause * bc = get_bchecker_clause (c);
+  invalidate_counterpart (c);
+  append_lemma (bc, 0);
   STOP (bchecking);
 }
 
@@ -730,26 +780,35 @@ void BChecker::update_moved_counterparts () {
   for (int i = 0; i < proof.size(); i++) {
     BCheckerClause * bc = proof[i].first;
     bool deleted = proof[i].second;
-    if (deleted) continue;
     Clause * c = counterparts[i];
-    assert (c);
+
+    assert (!deleted || !c);
+
+    if (deleted) continue;
+
     assert (c->size == 2 || !c->garbage || c->moved);
+
     if (c->moved) {
       assert (c->copy);
       /// TODO: proof isn't notified with deleted clauses
       //  of size 2 until they are actually deallocated.
       // Consider cancelling the delaying when bchecking.
-      if (c->size != 2)
-        assert (!c->copy->garbage);
-      auto & old_indexes = ordering[c];
-      auto & new_indexes = ordering[c->copy];
+      assert (c->size == 2 || !c->copy->garbage);
+      assert (c != c->copy);
+      auto & old_indexes = cp_ordering[c];
+      auto & new_indexes = cp_ordering[c->copy];
+      assert (old_indexes.size());
       assert (new_indexes.empty());
       for (int j : old_indexes)
         new_indexes.push_back (j);
       old_indexes.clear ();
       counterparts[i] = c->copy;
     }
-    assert (unsigned(c->size) == bc->size);
+    if (!(unsigned(counterparts[i]->size) == proof[i].first->size)) {
+      pc (counterparts[i]);
+      pc (proof[i].first);
+    }
+    assert (unsigned(counterparts[i]->size) == proof[i].first->size);
   }
   STOP (bchecking);
 }

@@ -212,6 +212,12 @@ void Internal::compact () {
   // Map the literals in all clauses.
   //
   for (const auto & c : clauses) {
+    if (c->garbage) {
+      printf ("%d: ", c->size);
+      for (int i = 0; i < c->size; i++)
+        printf ("%d ", c->literals[i]);
+      printf ("\n");
+    }
     assert (!c->garbage);
     for (auto & src : *c) {
       assert (!val (src));

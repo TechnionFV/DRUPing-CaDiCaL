@@ -161,14 +161,12 @@ void Internal::strengthen_clause (Clause * c, int lit) {
   assert (c->size > 2);
   LOG (c, "removing %d in", lit);
   if (proof) proof->strengthen_clause (c, lit);
-  ///TODO: Does bchecker care about order?
-  if (bchecker) bchecker->delete_clause (c);
+  if (bchecker) bchecker->strengthen_clause (c, lit);
   if (!c->redundant) mark_removed (lit);
   auto new_end = remove (c->begin (), c->end (), lit);
   assert (new_end + 1 == c->end ()), (void) new_end;
   (void) shrink_clause (c, c->size - 1);
   c->used = true;
-  if (bchecker) bchecker->add_derived_clause (c);
   LOG (c, "strengthened");
   external->check_shrunken_clause (c);
 }

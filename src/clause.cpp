@@ -438,7 +438,7 @@ void Internal::add_new_original_clause () {
       if (bchecker) bchecker->add_derived_unit_clause (lit);
       assign_original_unit (lit);
     } else {
-      Clause * c = new_clause (false);
+      Clause * c = new_clause (derived_original);
       watch_clause (c);
       if (derived_original && bchecker)
         bchecker->add_derived_clause (c);
@@ -449,6 +449,7 @@ void Internal::add_new_original_clause () {
         proof->add_derived_clause (clause);
         proof->delete_clause (original);
       }
+      if (bchecker) bchecker->delete_clause (original, true);
     }
   }
   clause.clear ();

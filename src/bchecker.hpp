@@ -14,10 +14,10 @@ namespace CaDiCaL {
 /*------------------------------------------------------------------------*/
 
 struct BCheckerClause {
-  BCheckerClause* next;
+  BCheckerClause * next;
   uint64_t hash;
   unsigned size;
-  bool garbage;
+  bool original;
   int literals[1];
 };
 
@@ -33,12 +33,13 @@ class BChecker {
   //
   vector<Clause*> counterparts;
 
-  // for each counterpart 'c', 'ordering[c]' contains all matching stack indexes
+  // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
   //
-  unordered_map<Clause *, vector<int>> ordering;
+  unordered_map<Clause *, vector<int>> cp_ordering;
 
-  BCheckerClause * get_bchecker_clause (Clause * c);
-  BCheckerClause * get_bchecker_clause (int lit);
+  BCheckerClause * get_bchecker_clause (const vector<int> &);
+  BCheckerClause * get_bchecker_clause (Clause *);
+  BCheckerClause * get_bchecker_clause (int);
 
   void invalidate_counterpart (Clause * c);
   void append_lemma (BCheckerClause* bc, Clause * c);
@@ -122,6 +123,11 @@ public:
   void add_derived_clause (Clause *);
   void add_derived_unit_clause (const int);
   void add_derived_empty_clause ();
+
+  void strengthen_clause (Clause * c, int lit);
+  void flush_clause (Clause *);
+
+  void delete_clause (const vector<int> &, bool original = false);
   void delete_clause (Clause *);
 
   void update_moved_counterparts ();
