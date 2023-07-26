@@ -92,7 +92,7 @@ class BChecker {
   void mark_core_trail_antecedents ();
   void put_units_back ();
 
-  bool shrink_internal_trail (const int);
+  void shrink_internal_trail (const int);
   void clear ();
   bool validate_lemma (Clause *);
 

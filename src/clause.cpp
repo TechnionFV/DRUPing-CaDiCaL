@@ -303,10 +303,8 @@ void Internal::delete_clause (Clause * c) {
     // from the proof perspective is that the deletion of these binary
     // clauses occurs later in the proof file.
     //
-    if (c->size == 2) {
+    if (c->size == 2)
       if (proof) proof->delete_clause (c);
-      if (bchecker) bchecker->delete_clause (c);
-    }
   }
   deallocate_clause (c);
 }
@@ -334,10 +332,10 @@ void Internal::mark_garbage (Clause * c) {
   // Delay tracing deletion of binary clauses.  See the discussion above in
   // 'delete_clause' and also in 'propagate'.
   //
-  if (c->size != 2) {
+  if (c->size != 2)
     if (proof) proof->delete_clause (c);
-    if (bchecker) bchecker->delete_clause (c);
-  }
+
+  if (bchecker) bchecker->delete_clause (c);
 
   assert (stats.current.total > 0);
   stats.current.total--;

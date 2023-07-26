@@ -264,9 +264,8 @@ void BChecker::stagnate_internal_clause (const int i) {
   invalidate_counterpart (c);
 }
 
-bool BChecker::shrink_internal_trail (const int trail_sz) {
-  if (trail_sz >= internal->trail.size())
-    return false;
+void BChecker::shrink_internal_trail (const int trail_sz) {
+  assert (trail_sz <= internal->trail.size());
   internal->trail.resize(trail_sz);
   internal->propagated = trail_sz;
 
@@ -276,8 +275,6 @@ bool BChecker::shrink_internal_trail (const int trail_sz) {
     assert (!internal->level);
     assert(internal->control.size () == 1);
   }
-
-  return true;
 }
 
 // The internal solver does not support reactivation of
@@ -488,7 +485,9 @@ void BChecker::put_units_back () {
 
 void BChecker::check_data () {
   assert (proof.size() == counterparts.size());
+  assert (proof.size() == stats.derived + stats.deleted);
   int deleted_lemmas = 0, valid_counterparts = 0;
+  printf ("checking proof od size %d\n", proof.size());
   for (int i = 0; i < proof.size(); i++) {
     BCheckerClause * bc = proof[i].first;
     bool deleted = proof[i].second;
@@ -526,6 +525,11 @@ bool BChecker::validate () {
 
   START (bchecking);
   LOG ("BCHECKER starting validation");
+
+  ///NOTE: The delay in notifying the proof with binary deleted clause
+  // can lead to a situation where garbage binary clauses are lost
+  // because they have not been deallocated yet at this point. However,
+  // this is crucial for backward validation.
 
   validating = true;
 
@@ -660,7 +664,10 @@ void BChecker::append_lemma (BCheckerClause * bc, Clause * c) {
   bool deleted = c == 0;
   if (deleted) stats.deleted++;
   else stats.derived++;
-  cp_ordering[c].push_back (proof.size());
+  if (c) {
+    cp_ordering[c].push_back (proof.size());
+    assert (cp_ordering[c].size() == 1);
+  }
   proof.push_back ({bc, deleted});
   counterparts.push_back (c);
   assert (proof.size() == counterparts.size());
@@ -672,8 +679,7 @@ void BChecker::add_derived_clause (Clause * c) {
   if (inconsistent) return;
   START (bchecking);
   LOG (c, "BCHECKER derived clause notification");
-  assert (c->redundant);
-  assert (c && c->size > 1);
+  assert (c && c->size > 1 && c->redundant);
   BCheckerClause * bc = get_bchecker_clause (c);
   assert (bc);
   append_lemma (bc, c);
@@ -765,6 +771,7 @@ void BChecker::delete_clause (Clause * c) {
   START (bchecking);
   LOG (c, "BCHECKER clause deletion notification");
   BCheckerClause * bc = get_bchecker_clause (c);
+  bc->original = !c->redundant;
   invalidate_counterpart (c);
   append_lemma (bc, 0);
   STOP (bchecking);
@@ -804,11 +811,20 @@ void BChecker::update_moved_counterparts () {
       old_indexes.clear ();
       counterparts[i] = c->copy;
     }
-    if (!(unsigned(counterparts[i]->size) == proof[i].first->size)) {
-      pc (counterparts[i]);
-      pc (proof[i].first);
+    c = counterparts[i];
+    assert (c->size == 2 || !c->garbage);
+    if (c->garbage) {
+      assert (c->size == 2);
+      invalidate_counterpart (c);
+      append_lemma (bc, 0);
+      assert (!counterparts[i] && proof[i].second);
+    } else {
+      if (!(unsigned(counterparts[i]->size) == proof[i].first->size)) {
+        pc (counterparts[i]);
+        pc (proof[i].first);
+      }
+      assert (unsigned(counterparts[i]->size) == proof[i].first->size);
     }
-    assert (unsigned(counterparts[i]->size) == proof[i].first->size);
   }
   STOP (bchecking);
 }
