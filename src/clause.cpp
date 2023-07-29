@@ -433,10 +433,10 @@ void Internal::add_new_original_clause () {
       }
     } else if (size == 1) {
       const int lit = clause[0];
-      if (bchecker) bchecker->add_derived_unit_clause (lit);
+      if (bchecker) bchecker->add_derived_unit_clause (lit, !derived_original);
       assign_original_unit (lit);
     } else {
-      Clause * c = new_clause (derived_original);
+      Clause * c = new_clause (false);
       watch_clause (c);
       if (derived_original && bchecker)
         bchecker->add_derived_clause (c);

@@ -39,7 +39,7 @@ OPTION( checkfailed,       1,  0,  1,0,0,0, "check failed literals form core") \
 OPTION( checkfrozen,       0,  0,  1,0,0,0, "check all frozen semantics") \
 OPTION( checkproof,        1,  0,  1,0,0,0, "online forward proof checking internally") \
 OPTION( checkwitness,      1,  0,  1,0,0,0, "check witness internally") \
-OPTION( chrono,            1,  0,  2,0,0,1, "chronological backtracking") \
+OPTION( chrono,            0,  0,  2,0,0,1, "chronological backtracking") \
 OPTION( chronoalways,      0,  0,  1,0,0,1, "force always chronological") \
 OPTION( chronolevelim,   1e2,  0,2e9,0,0,1, "chronological level limit") \
 OPTION( chronoreusetrail,  1,  0,  1,0,0,1, "reuse trail chronologically") \

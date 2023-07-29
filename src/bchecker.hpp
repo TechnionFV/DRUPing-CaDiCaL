@@ -37,10 +37,6 @@ class BChecker {
   //
   unordered_map<Clause *, vector<int>> cp_ordering;
 
-  BCheckerClause * get_bchecker_clause (const vector<int> &);
-  BCheckerClause * get_bchecker_clause (Clause *);
-  BCheckerClause * get_bchecker_clause (int);
-
   void invalidate_counterpart (Clause * c);
   void append_lemma (BCheckerClause* bc, Clause * c);
 
@@ -66,11 +62,16 @@ class BChecker {
   BCheckerClause * new_clause (const vector<int> & simplified, const uint64_t hash);
   void delete_clause (BCheckerClause *);
 
-  BCheckerClause ** find (Clause *);         // find clause position in hash table
-  BCheckerClause * insert (Clause * c);      // insert clause in hash table
-
+  BCheckerClause * find (Clause *);                    // find clause position in hash table
+  BCheckerClause * insert (Clause * c);                 // insert clause in hash table
   BCheckerClause ** find (const vector<int> &);         // find clause position in hash table
-  BCheckerClause * insert (const vector<int> &);      // insert clause in hash table
+  BCheckerClause * insert (const vector<int> &);        // insert clause in hash table
+
+  BCheckerClause * get_bchecker_clause (const vector<int> &);
+  BCheckerClause * get_bchecker_clause (Clause *);
+  BCheckerClause * get_bchecker_clause (int);
+  bool exists (const vector<int> & c);
+  bool exists (Clause * c);
 
   // If true, include core unit clauses.
   //
@@ -121,7 +122,7 @@ public:
   ~BChecker ();
 
   void add_derived_clause (Clause *);
-  void add_derived_unit_clause (const int);
+  void add_derived_unit_clause (const int, bool original = false);
   void add_derived_empty_clause ();
 
   void strengthen_clause (Clause * c, int lit);
