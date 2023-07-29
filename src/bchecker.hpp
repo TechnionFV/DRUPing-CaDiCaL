@@ -83,6 +83,7 @@ class BChecker {
   //
   bool core_units;
 
+  vector<Clause *> revived;
   void revive_internal_clause (BCheckerClause *);
   void stagnate_internal_clause (const int);
   void reactivate_fixed (int);
@@ -95,7 +96,6 @@ class BChecker {
   void conflict_analysis_core ();
 
   void mark_core (Clause *);
-  void mark_core_trail_antecedents ();
   void put_units_back ();
 
   void shrink_internal_trail (const unsigned);
@@ -104,6 +104,9 @@ class BChecker {
   void prepare ();
 
   bool validate_lemma (Clause *);
+
+  void mark_core_trail_antecedents ();
+  void delete_revived_clauses ();
 
   bool validating;      // On during validating
 

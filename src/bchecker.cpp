@@ -230,6 +230,7 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
       clause.push_back (bc->literals[i]);
     Clause * c = internal->new_clause (!bc->original);
     clause.clear();
+    revived.push_back (c);
     if (satisfied (internal, c)) {
       for (int i = 0; i < c->size && internal->val(c->literals[1]); i++) {
         if (internal->val(c->literals[i]) >= 0) {
@@ -267,7 +268,7 @@ void BChecker::stagnate_internal_clause (const int i) {
   Clause * c = counterparts[i];
   if (c->size > 1)
     internal->unwatch_clause (c);
-  internal->mark_garbage (c);
+  // internal->mark_garbage (c);
   ///TODO: Decide either to invalidate counterpart reference or
   // to cancel the garbage collection during validation. Might be
   // better to reuse the same reference if still valid instead of
@@ -469,6 +470,12 @@ void BChecker::mark_core_trail_antecedents () {
   }
 }
 
+void BChecker::delete_revived_clauses () {
+  for (auto c : revived)
+    internal->mark_garbage (c);
+  revived.clear ();
+}
+
 void BChecker::put_units_back () {
   ///TODO: Needs to be implemented
 }
@@ -580,6 +587,8 @@ bool BChecker::validate () {
   shrink_internal_trail (trail_sz);
 
   mark_core_trail_antecedents ();
+
+  delete_revived_clauses ();
 
   put_units_back ();
 
