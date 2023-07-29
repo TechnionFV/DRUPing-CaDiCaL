@@ -35,7 +35,7 @@ class BChecker {
 
   // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
   //
-  unordered_map<Clause *, vector<int>> cp_ordering;
+  unordered_map<Clause *, vector<unsigned>> cp_ordering;
 
   void invalidate_counterpart (Clause * c);
   void append_lemma (BCheckerClause* bc, Clause * c);
@@ -59,52 +59,57 @@ class BChecker {
   //
   void enlarge_clauses ();
 
-  BCheckerClause * new_clause (const vector<int> & simplified, const uint64_t hash);
+  BCheckerClause * new_clause (const vector<int> & lits, const uint64_t hash);
   void delete_clause (BCheckerClause *);
 
-  BCheckerClause * find (Clause *);                    // find clause position in hash table
-  BCheckerClause * insert (Clause * c);                 // insert clause in hash table
-  BCheckerClause ** find (const vector<int> &);         // find clause position in hash table
-  BCheckerClause * insert (const vector<int> &);        // insert clause in hash table
+  // insert clause in hash table
+  //
+  BCheckerClause * insert (Clause *);
+  BCheckerClause * insert (const vector<int> &);
+
+  // find clause position in hash table
+  //
+  BCheckerClause * find (Clause *);
+  BCheckerClause * find (const vector<int> &);
+
+  bool exists (const vector<int> &);
+  bool exists (Clause *);
 
   BCheckerClause * get_bchecker_clause (const vector<int> &);
   BCheckerClause * get_bchecker_clause (Clause *);
   BCheckerClause * get_bchecker_clause (int);
-  bool exists (const vector<int> & c);
-  bool exists (Clause * c);
 
   // If true, include core unit clauses.
   //
   bool core_units;
 
   void revive_internal_clause (BCheckerClause *);
-  void stagnate_internal_clause (const int i);
-  void reactivate_fixed (int );
+  void stagnate_internal_clause (const int);
+  void reactivate_fixed (int);
 
   // popping all trail literals up to and including the literal whose antecedent is 'c'.
   //
   void undo_trail_core (Clause * c, unsigned & trail_sz);
-  void undo_trail_literal (int );
+  void undo_trail_literal (int);
   bool is_on_trail (Clause *);
-
   void conflict_analysis_core ();
 
   void mark_core (Clause *);
   void mark_core_trail_antecedents ();
   void put_units_back ();
 
-  void shrink_internal_trail (const int);
+  void shrink_internal_trail (const unsigned);
   void clear ();
-  bool validate_lemma (Clause *);
 
-  void check_data ();
+  void prepare ();
+
+  bool validate_lemma (Clause *);
 
   bool validating;      // On during validating
 
   struct {
 
     int64_t added;              // number of added clauses
-    int64_t original;           // number of added original clauses
     int64_t derived;            // number of added derived clauses
     int64_t counterparts;       // number of added counterpart references
 
@@ -136,8 +141,6 @@ public:
   bool validate ();             // validate the clausal proof
 
   void print_stats ();
-
-  void dump ();                 // for debugging purposes only
 };
 
 }

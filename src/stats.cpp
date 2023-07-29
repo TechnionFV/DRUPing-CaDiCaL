@@ -312,7 +312,6 @@ void BChecker::print_stats () {
 
   SECTION ("bchecker statistics");
 
-  MSG ("original:        %15" PRId64 "   %10.2f %%  of all clauses", stats.original, percent (stats.original, stats.added));
   MSG ("derived:         %15" PRId64 "   %10.2f %%  of all clauses", stats.derived, percent (stats.derived, stats.added));
   MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all derived clauses", stats.counterparts, percent (stats.counterparts, stats.derived));
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all derived clauses", stats.deleted, percent (stats.deleted, stats.derived));
