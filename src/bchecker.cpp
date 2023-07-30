@@ -310,7 +310,6 @@ void BChecker::undo_trail_literal (int lit) {
   assert (internal->active (lit));
   Var & v = internal->var (lit);
   assert (v.reason);
-  v.reason->reason = false;
   v.reason = 0;
 }
 
@@ -330,19 +329,15 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
     int l = internal->trail[--trail_sz];
 
     Clause * r = internal->var(l).reason;
-    assert (r);
+    assert (r && r->literals[0] == l);
 
-    undo_trail_literal (l); // sets r->reason to false
+    undo_trail_literal (l);
 
     if (core_units) mark_core (r);
 
     if (r->core)
       for (int j = 1; j < r->size; j++)
-      {
-        Clause * reason = internal->var(r->literals[j]).reason;
-        assert (reason);
-        mark_core (reason);
-      }
+        mark_core (internal->var(r->literals[j]).reason);
   }
 
   assert(clit == internal->trail[--trail_sz]);
@@ -350,8 +345,11 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  assert (internal->protected_reasons && !c->garbage);
-  return c->reason;
+  assert (!c->garbage);
+  int l = c->literals[0];
+  if (internal->val (l) <= 0) return false;
+  Clause * r = internal->var (l).reason;
+  return r == c;
 }
 
 void BChecker::mark_core (Clause * c) {
@@ -397,12 +395,12 @@ void BChecker::conflict_analysis_core () {
     internal->unmark(abs(lit));
 
     Clause * c = v.reason;
-    assert (c);
 
     mark_core (c);
 
     assert (internal->var(c->literals[0]).reason == c);
     assert (internal->val(c->literals[0]) > 0);
+    assert (c->literals[0] == lit);
 
     for (int j = 1; j < c->size; j++)
     {
@@ -529,10 +527,9 @@ bool BChecker::validate () {
   // are being cached as learnt clauses if any (revisit src/assume.cpp).
 
   ///TODO: Check which has more overhead:
-  // 1- either protect all reasons once and check ->reason flag
+  // 1- either protect all reasons once and check ->reason flag.
+  //    make sure to set internal->protected_reasons accordingly.
   // 2- or use the classical Minisat way (Solver::locked ()).
-  if (!internal->protected_reasons)
-    internal->protect_reasons();
 
   internal->flush_all_occs_and_watches ();
 
@@ -588,7 +585,7 @@ bool BChecker::validate () {
 
   mark_core_trail_antecedents ();
 
-  delete_revived_clauses ();
+  // delete_revived_clauses ();
 
   put_units_back ();
 
@@ -687,7 +684,7 @@ void BChecker::add_derived_unit_clause (const int lit, bool original) {
   Clause * r = internal->var(lit).reason;
   Clause * unit = 0;
   if (!r || r->size > 1)
-    unit = internal->new_unit_clause (lit, true);
+    unit = internal->new_unit_clause (lit, !original);
   else
     unit = r;
   if (!original) append_lemma (bc, unit);
