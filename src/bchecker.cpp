@@ -231,33 +231,14 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
     Clause * c = internal->new_clause (!bc->original);
     clause.clear();
     revived.push_back (c);
-    if (satisfied (internal, c)) {
-      for (int i = 0; i < c->size && internal->val(c->literals[1]); i++) {
-        if (internal->val(c->literals[i]) >= 0) {
-          int lit = c->literals[i];
-          c->literals[i] = c->literals[1];
-          c->literals[1] = lit;
-        }
+    ///TODO: Revisit this code block. The issue is that bc is
+    // not maintaing the correct order of counterpart literals.
+    for (int i = 1; i < c->size && internal->val(c->literals[1]); i++) {
+      if (internal->val(c->literals[i]) >= 0) {
+        int lit = c->literals[i];
+        c->literals[i] = c->literals[1];
+        c->literals[1] = lit;
       }
-    } else {
-      ///TODO: Revisit this code block. The issue is that bc isn't maintaing the
-      // correct order of counterpart literals.
-      // for (int i = 0; i < c->size && internal->val(c->literals[0]); i++) {
-      //   if (!internal->val(c->literals[i])) {
-      //     int lit = c->literals[i];
-      //     c->literals[i] = c->literals[0];
-      //     c->literals[0] = lit;
-      //   }
-      // }
-      for (int i = 1; i < c->size && internal->val(c->literals[1]) < 0; i++) {
-        if (!internal->val(c->literals[i])) {
-          int lit = c->literals[i];
-          c->literals[i] = c->literals[1];
-          c->literals[1] = lit;
-        }
-      }
-      assert (internal->val (c->literals[0]) <= 0);
-      assert (internal->val (c->literals[1]) <= 0);
     }
     internal->watch_clause (c);
   }
@@ -595,7 +576,7 @@ bool BChecker::validate () {
 
   printf ("Core lemmas are: \n");
   for (unsigned i = 0; i < internal->clauses.size (); i++) {
-    if (internal->clauses[i]->garbage) continue;
+    if (internal->clauses[i]->redundant) continue;
     if (internal->clauses[i]->core)
       pc (internal->clauses[i]);
   }
