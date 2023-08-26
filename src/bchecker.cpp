@@ -282,6 +282,7 @@ void BChecker::reactivate_fixed (int l) {
   internal->stats.active++;
 }
 
+///TODO: Is this necessary? Drop this...
 void BChecker::undo_trail_literal (int lit) {
   assert (internal->val (lit) > 0);
   if (!internal->active (lit))
