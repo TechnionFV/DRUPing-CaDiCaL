@@ -3,32 +3,6 @@
 
 namespace CaDiCaL {
 
-static void pc (const vector<int> c) {
-  for (unsigned i = 0; i < c.size(); i++)
-    printf ("%d ", c[i]);
-  printf ("\n");
-}
-
-static void pc (const BCheckerClause * c) {
-  if (!c) {
-    printf("0\n");
-    return;
-  }
-  for (unsigned i = 0; i < c->size; i++)
-    printf ("%d ", c->literals[i]);
-  printf ("\n");
-}
-
-static void pc (const Clause * c) {
-  if (!c) {
-    printf("0\n");
-    return;
-  }
-  for (int i = 0; i < c->size; i++)
-    printf ("%d ", c->literals[i]);
-  printf ("\n");
-}
-
 /*------------------------------------------------------------------------*/
 
 BChecker::BChecker (Internal * i, bool core_units)
@@ -249,7 +223,7 @@ void BChecker::stagnate_internal_clause (const int i) {
   Clause * c = counterparts[i];
   if (c->size > 1)
     internal->unwatch_clause (c);
-  // internal->mark_garbage (c);
+  internal->mark_garbage (c);
   ///TODO: Decide either to invalidate counterpart reference or
   // to cancel the garbage collection during validation. Might be
   // better to reuse the same reference if still valid instead of
@@ -575,13 +549,6 @@ bool BChecker::validate () {
 
   ///TODO: Clean up internal clauses that were created for validation purposes.
 
-  printf ("Core lemmas are: \n");
-  for (unsigned i = 0; i < internal->clauses.size (); i++) {
-    if (internal->clauses[i]->redundant) continue;
-    if (internal->clauses[i]->core)
-      pc (internal->clauses[i]);
-  }
-
   validating = false;
 
 exit:
@@ -695,8 +662,8 @@ void BChecker::strengthen_clause (Clause * c, int lit) {
   vector<int> strengthened;
   for (int i = 0; i < c->size; i++) {
     int internal_lit = c->literals[i];
-    if (internal_lit != lit)
-      strengthened.push_back (internal_lit);
+    if (internal_lit == lit) continue;
+    strengthened.push_back (internal_lit);
   }
   BCheckerClause * strengthened_bc = get_bchecker_clause (strengthened);
   invalidate_counterpart (c);
@@ -790,13 +757,8 @@ void BChecker::update_moved_counterparts () {
       invalidate_counterpart (c);
       append_lemma (bc, 0);
       assert (!counterparts[i] && proof[i].second);
-    } else {
-      if (!(unsigned(counterparts[i]->size) == proof[i].first->size)) {
-        pc (counterparts[i]);
-        pc (proof[i].first);
-      }
-      assert (unsigned(counterparts[i]->size) == proof[i].first->size);
     }
+    assert (!c->garbage || unsigned(counterparts[i]->size) == proof[i].first->size);
   }
   STOP (bchecking);
 }
