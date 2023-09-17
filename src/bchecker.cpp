@@ -52,9 +52,9 @@ uint64_t BChecker::reduce_hash (uint64_t hash, uint64_t size) {
 }
 
 uint64_t BChecker::compute_hash (const vector<int> & lits) {
-  ///TODO: Hash isn't order insinsetive. Since internal Clause objects
-  //  are prone to reordering we must have an order insensitive hash computation.
-  //  In the meantime, sort before computing the hash value.
+  ///NOTE: Hash isn't order insinsetive. Since internal Clause objects
+  // are prone to reordering we must have an order insensitive hash computation.
+  // In the meantime, sort before computing the hash value.
   auto sorted (lits); sort(sorted.begin (), sorted.end ());
   unsigned i = 0, j = 0;
   uint64_t hash = 0;
@@ -197,6 +197,7 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
     ///TODO: might need to allocate a new unit clause here
     assert (internal->var (lit).reason);
     assert (internal->fixed (lit) > 0);
+    internal->var (lit).reason->garbage = false;
   } else {
     vector<int> & clause = internal->clause;
     assert (clause.empty());
@@ -204,7 +205,6 @@ void BChecker::revive_internal_clause (BCheckerClause * bc) {
       clause.push_back (bc->literals[i]);
     Clause * c = internal->new_clause (!bc->original);
     clause.clear();
-    revived.push_back (c);
     ///TODO: Revisit this code block. The issue is that bc is
     // not maintaing the correct order of counterpart literals.
     for (int i = 1; i < c->size && internal->val(c->literals[1]); i++) {
@@ -412,26 +412,28 @@ bool BChecker::validate_lemma (Clause * lemma) {
 }
 
 void BChecker::mark_core_trail_antecedents () {
-  for (int lit : internal->trail) {
+  for (int i = internal->trail.size() - 1; i >= 0; i--) {
+    int lit = internal->trail[i];
     Clause * reason = internal->var (lit).reason;
     assert (reason);
     if (reason->core) {
       assert (reason->literals[0] == lit);
       for (int j = 1; j < reason->size; j++)
         mark_core (internal->var (reason->literals[j]).reason);
-      ///TODO: qhead = i;
+      internal->propagated = i;
+      ///TODO: set internal->propagated2
     }
   }
 }
 
-void BChecker::delete_revived_clauses () {
-  for (auto c : revived)
-    internal->mark_garbage (c);
-  revived.clear ();
-}
-
 void BChecker::put_units_back () {
-  ///TODO: Needs to be implemented
+  for (Clause * c : internal->clauses)
+    if (c->size == 1) {
+      int lit = c->literals[0];
+      if (!internal->val (lit))
+        internal->search_assign (lit, c);
+        ///TODO: internal->search_assign (lit, 0); instead?
+    }
 }
 
 void BChecker::prepare () {
@@ -519,6 +521,7 @@ bool BChecker::validate () {
       continue;
     }
 
+    assert (!bc->original);
     assert (c && !c->garbage);
 
     if (is_on_trail (c)) {
@@ -540,8 +543,6 @@ bool BChecker::validate () {
   shrink_internal_trail (trail_sz);
 
   mark_core_trail_antecedents ();
-
-  // delete_revived_clauses ();
 
   put_units_back ();
 
