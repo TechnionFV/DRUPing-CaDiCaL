@@ -325,9 +325,10 @@ void BChecker::conflict_analysis_core () {
   ///NOTE: Checking the 'lit' is assigned might be redundant. But let us keep this
   // for now because unassigning a literal does not necessarily reset the trail value.
   auto got_value_by_propagation = [this](int lit) {
-    bool assigned = internal->val (lit) != 0;
+    assert (internal->val (lit) != 0);
     int trail = internal->var (lit).trail;
-    return assigned && trail > internal->control.back().trail && trail < internal->propagated;
+    assert (trail >= 0 && trail < internal->trail.size());
+    return trail > internal->control.back().trail;
   };
 
   for (int i = 0; i < conflict->size; i++)
@@ -341,7 +342,7 @@ void BChecker::conflict_analysis_core () {
       mark_core (v.reason);
   }
 
-  for (int i = internal->propagated-1; i > internal->control.back().trail; i--)
+  for (int i = internal->trail.size()-1; i > internal->control.back().trail; i--)
   {
     int lit = internal->trail[i];
     Var & v = internal->var(lit);
@@ -361,12 +362,12 @@ void BChecker::conflict_analysis_core () {
     for (int j = 1; j < c->size; j++)
     {
       int lit = c->literals[j];
-      Var & y = internal->var(lit);
+      Var & v = internal->var(lit);
       assert(internal->val(lit) < 0);
       if (got_value_by_propagation (lit) && !internal->marked (abs(lit)))
         internal->mark (abs(lit));
-      else if (!y.level)
-        mark_core (y.reason);
+      else if (!v.level)
+        mark_core (v.reason);
     }
   }
 }
@@ -380,8 +381,8 @@ bool BChecker::validate_lemma (Clause * lemma) {
   vector <int> decisions;
   for (int i = 0; i < lemma->size; i++) {
     int lit = lemma->literals[i];
-    if (!internal->val (lit))
-      decisions.push_back (-lit);
+    assert (!internal->val (lit));
+    decisions.push_back (-lit);
   }
 
   assert (decisions.size());
@@ -551,6 +552,15 @@ bool BChecker::validate () {
   ///TODO: Clean up internal clauses that were created for validation purposes.
 
   validating = false;
+
+  printf ("Core lemmas are: \n");
+  for (Clause * c : internal->clauses) {
+    if (c->core) {
+      for (int i = 0; i < c->size; i++)
+        printf ("%d ", c->literals[i]);
+      printf ("\n");
+    }
+  }
 
 exit:
   STOP (bchecking);
