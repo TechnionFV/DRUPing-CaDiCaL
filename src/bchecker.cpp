@@ -191,29 +191,48 @@ static bool satisfied (Internal * internal, Clause * c) {
 }
 
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
-void BChecker::revive_internal_clause (BCheckerClause * bc) {
+void BChecker::revive_internal_clause (int i) {
+  BCheckerClause * bc = proof[i].first;
+  assert (!counterparts[i]);
   if (bc->size == 1) {
     int lit = bc->literals[0];
     ///TODO: might need to allocate a new unit clause here
     assert (internal->var (lit).reason);
     assert (internal->fixed (lit) > 0);
-    internal->var (lit).reason->garbage = false;
+    Clause * c = 0;
+    if (internal->internal->var (lit).reason->size == 1)
+      c = internal->internal->var (lit).reason, c->garbage = false;
+    else c = internal->new_unit_clause (lit, true /* if it was deleted before, then it should be redundant...*/);
+    // for (int j = 0; j < i; j++)
+    //   if (bc == proof[j].first && proof[j].second) {
+    //     proof[j].second = false;
+    //     counterparts[j] = c;
+    //     cp_ordering[c].push_back (j);
+    //   }
   } else {
     vector<int> & clause = internal->clause;
     assert (clause.empty());
-    for (unsigned i = 0; i < bc->size; i++)
-      clause.push_back (bc->literals[i]);
-    Clause * c = internal->new_clause (!bc->original);
+    for (unsigned j = 0; j < bc->size; j++)
+      clause.push_back (bc->literals[j]);
+    Clause * c = internal->new_clause (true);
     clause.clear();
     ///TODO: Revisit this code block. The issue is that bc is
-    // not maintaing the correct order of counterpart literals.
-    for (int i = 1; i < c->size && internal->val(c->literals[1]); i++) {
-      if (internal->val(c->literals[i]) >= 0) {
-        int lit = c->literals[i];
-        c->literals[i] = c->literals[1];
-        c->literals[1] = lit;
+    // not maintaing the correct order of counterpart literals. Why is it needed anyway?
+    if (satisfied (internal, c)) {
+      for (int j = 1; j < c->size && internal->val(c->literals[1]); j++) {
+        if (!internal->val(c->literals[j])) {
+          int lit = c->literals[j];
+          c->literals[j] = c->literals[1];
+          c->literals[1] = lit;
+        }
       }
     }
+    // for (int j = 0; j < i; j++)
+    //   if (bc == proof[j].first) {
+    //     proof[j].second = false;
+    //     counterparts[j] = c;
+    //     cp_ordering[c].push_back (j);
+    //   }
     internal->watch_clause (c);
   }
 }
@@ -256,7 +275,6 @@ void BChecker::reactivate_fixed (int l) {
   internal->stats.active++;
 }
 
-///TODO: Is this necessary? Drop this...
 void BChecker::undo_trail_literal (int lit) {
   assert (internal->val (lit) > 0);
   if (!internal->active (lit))
@@ -266,7 +284,7 @@ void BChecker::undo_trail_literal (int lit) {
   assert (internal->active (lit));
   Var & v = internal->var (lit);
   assert (v.reason);
-  v.reason = 0;
+  v.reason->reason = false;
 }
 
 void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
@@ -274,7 +292,6 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
   assert (c && trail_sz > 0 && c->size > 0);
   assert (trail_sz <= internal->trail.size());
   assert (is_on_trail (c));
-
   int clit = c->literals[0];
   assert (internal->var (clit).reason == c);
   assert (internal->val (clit) > 0);
@@ -301,11 +318,8 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
-  assert (!c->garbage);
-  int l = c->literals[0];
-  if (internal->val (l) <= 0) return false;
-  Clause * r = internal->var (l).reason;
-  return r == c;
+  assert (!c->garbage && internal->protected_reasons);
+  return c->reason;
 }
 
 void BChecker::mark_core (Clause * c) {
@@ -322,14 +336,16 @@ void BChecker::conflict_analysis_core () {
   ///TODO: Check this is correct even when chronological backtraking is on (internal->opts.chrono).
   // Need to check with https://cca.informatik.uni-freiburg.de/papers/MoehleBiere-SAT19.pdf
 
-  ///NOTE: Checking the 'lit' is assigned might be redundant. But let us keep this
-  // for now because unassigning a literal does not necessarily reset the trail value.
   auto got_value_by_propagation = [this](int lit) {
     assert (internal->val (lit) != 0);
     int trail = internal->var (lit).trail;
     assert (trail >= 0 && trail < internal->trail.size());
+    assert (internal->trail[trail] == -lit);
     return trail > internal->control.back().trail;
   };
+
+  ///TODO: Use internal->mark|ed () instead.
+  unordered_set<int> seen;
 
   for (int i = 0; i < conflict->size; i++)
   {
@@ -337,7 +353,7 @@ void BChecker::conflict_analysis_core () {
     Var & v = internal->var(lit);
     assert (v.level > 0 || v.reason);
     if (got_value_by_propagation (lit))
-      internal->mark(abs(lit));
+      seen.insert (abs(lit));
     else if (!v.level)
       mark_core (v.reason);
   }
@@ -346,10 +362,10 @@ void BChecker::conflict_analysis_core () {
   {
     int lit = internal->trail[i];
     Var & v = internal->var(lit);
-    if (!internal->marked(abs(lit)))
+    if (!seen.count (abs(lit)))
       continue;
 
-    internal->unmark(abs(lit));
+    seen.erase (abs(lit));
 
     Clause * c = v.reason;
 
@@ -364,12 +380,14 @@ void BChecker::conflict_analysis_core () {
       int lit = c->literals[j];
       Var & v = internal->var(lit);
       assert(internal->val(lit) < 0);
-      if (got_value_by_propagation (lit) && !internal->marked (abs(lit)))
-        internal->mark (abs(lit));
-      else if (!v.level)
+      if (got_value_by_propagation (lit))
+        seen.insert (abs(lit));
+      else if (!v.level) {
         mark_core (v.reason);
+      }
     }
   }
+  assert (seen.empty ());
 }
 
 bool BChecker::validate_lemma (Clause * lemma) {
@@ -389,6 +407,10 @@ bool BChecker::validate_lemma (Clause * lemma) {
   internal->search_assume_multiple_decisions (decisions);
   assert (internal->level  == decisions.size());
 
+  for (int i = 0; i < lemma->size; i++)
+    if (!internal->var(lemma->literals[i]).level && internal->val(lemma->literals[i]))
+      mark_core (internal->var(lemma->literals[i]).reason);
+
   assert(!internal->conflict);
   if (internal->propagate ())
   {
@@ -398,13 +420,9 @@ bool BChecker::validate_lemma (Clause * lemma) {
     // internal->propagated = 0;
     // if (internal->propagate ()) {
     //   internal->backtrack ();
-       return false;
+    return false;
     // }
   }
-
-  for (int i = 0; i < lemma->size; i++)
-    if (!internal->var(lemma->literals[i]).level && internal->val(lemma->literals[i]))
-      mark_core (internal->var(lemma->literals[i]).reason);
 
   conflict_analysis_core ();
 
@@ -469,7 +487,6 @@ bool BChecker::validate () {
   assert (inconsistent);
   assert (proof.size ());
   assert (internal->unsat);
-
   START (bchecking);
   LOG ("BCHECKER starting validation");
 
@@ -489,6 +506,8 @@ bool BChecker::validate () {
   // 1- either protect all reasons once and check ->reason flag.
   //    make sure to set internal->protected_reasons accordingly.
   // 2- or use the classical Minisat way (Solver::locked ()).
+
+  internal->protect_reasons ();
 
   internal->flush_all_occs_and_watches ();
 
@@ -518,7 +537,7 @@ bool BChecker::validate () {
     assert (!deleted || !c);
 
     if (deleted) {
-      revive_internal_clause (bc);
+      revive_internal_clause (i);
       continue;
     }
 
@@ -537,7 +556,10 @@ bool BChecker::validate () {
       //       clause. Irredundant does not necessarily mean learnt. For instance, a derived
       //       original clause is considered an irredundant leanrt clause.
       shrink_internal_trail (trail_sz);
-      if (!validate_lemma (c)) goto exit;
+      if (!validate_lemma (c)) {
+        printf ("failed at %d\n", i);
+        goto exit;
+      }
     }
   }
 
@@ -551,8 +573,6 @@ bool BChecker::validate () {
 
   ///TODO: Clean up internal clauses that were created for validation purposes.
 
-  validating = false;
-
   printf ("Core lemmas are: \n");
   for (Clause * c : internal->clauses) {
     if (c->core) {
@@ -561,6 +581,8 @@ bool BChecker::validate () {
       printf ("\n");
     }
   }
+
+  validating = false;
 
 exit:
   STOP (bchecking);
@@ -690,6 +712,10 @@ void BChecker::flush_clause (Clause * c) {
   assert (c);
   BCheckerClause * bc = get_bchecker_clause (c);
   vector<int> flushed;
+  ///TODO: Do we need to move falsified literals to the right here?
+  // This is done during the deletion of original cluases that have
+  // got their false literals removed in order for the reviving to
+  // watch the unassigned literals.
   for (int i = 0; i < c->size; i++) {
     int internal_lit = c->literals[i];
     if (internal->fixed (internal_lit) >= 0)
@@ -710,7 +736,19 @@ void BChecker::delete_clause (const vector<int> & c, bool original) {
   START (bchecking);
   LOG (c, "BCHECKER clause deletion notification");
   assert (!original || !exists (c));
-  BCheckerClause * bc = insert (c);
+  vector<int> modified (c);
+  if (original) {
+    int sz = modified.size ();
+    for (int i = 0; i < sz; i++) {
+      if (internal->val (c[i]) < 0) {
+        int bl = modified[sz-1];
+        modified[sz-1] = modified[i];
+        modified[i] = bl;
+        sz--;
+      }
+    }
+  }
+  BCheckerClause * bc = get_bchecker_clause (modified);
   bc->original = original;
   append_lemma (bc, 0);
   STOP (bchecking);

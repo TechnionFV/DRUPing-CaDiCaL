@@ -36,6 +36,7 @@ class BChecker {
   // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
   //
   unordered_map<Clause *, vector<unsigned>> cp_ordering;
+  unordered_map<int, vector<unsigned>> revive_ordering;
 
   void invalidate_counterpart (Clause * c);
   void append_lemma (BCheckerClause* bc, Clause * c);
@@ -83,7 +84,7 @@ class BChecker {
   //
   bool core_units;
 
-  void revive_internal_clause (BCheckerClause *);
+  void revive_internal_clause (int);
   void stagnate_internal_clause (const int);
   void reactivate_fixed (int);
 
@@ -106,7 +107,6 @@ class BChecker {
 
   void mark_core_trail_antecedents ();
 
-  bool validating;      // On during validating
 
   struct {
 
@@ -139,6 +139,7 @@ public:
 
   void update_moved_counterparts ();
 
+  bool validating;              // On during validating
   bool validate ();             // validate the clausal proof
 
   void print_stats ();
