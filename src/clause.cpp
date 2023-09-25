@@ -305,6 +305,10 @@ void Internal::delete_clause (Clause * c) {
     //
     if (proof && c->size == 2)
       proof->delete_clause (c);
+
+    if (bchecker && c->size == 2)
+      bchecker->delete_clause (c);
+
   }
   deallocate_clause (c);
 }
@@ -335,7 +339,8 @@ void Internal::mark_garbage (Clause * c) {
   if (proof && c->size != 2)
     proof->delete_clause (c);
 
-  if (bchecker) bchecker->delete_clause (c);
+  if (bchecker && c->size != 2)
+    bchecker->delete_clause (c);
 
   assert (stats.current.total > 0);
   stats.current.total--;

@@ -38,8 +38,8 @@ class BChecker {
   unordered_map<Clause *, vector<unsigned>> cp_ordering;
   unordered_map<int, vector<unsigned>> revive_ordering;
 
-  void invalidate_counterpart (Clause * c);
-  void append_lemma (BCheckerClause* bc, Clause * c);
+  void invalidate_counterpart (Clause * c, int i);
+  void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
 
   bool inconsistent;            // found or added empty clause
 
@@ -68,18 +68,6 @@ class BChecker {
   BCheckerClause * insert (Clause *);
   BCheckerClause * insert (const vector<int> &);
 
-  // find clause position in hash table
-  //
-  BCheckerClause * find (Clause *);
-  BCheckerClause * find (const vector<int> &);
-
-  bool exists (const vector<int> &);
-  bool exists (Clause *);
-
-  BCheckerClause * get_bchecker_clause (const vector<int> &);
-  BCheckerClause * get_bchecker_clause (Clause *);
-  BCheckerClause * get_bchecker_clause (int);
-
   // If true, include core unit clauses.
   //
   bool core_units;
@@ -101,7 +89,7 @@ class BChecker {
   void shrink_internal_trail (const unsigned);
   void clear ();
 
-  void prepare ();
+  void check_environment ();
 
   bool validate_lemma (Clause *);
 
