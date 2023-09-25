@@ -440,11 +440,12 @@ void Internal::add_new_original_clause () {
     } else if (size == 1) {
       const int lit = clause[0];
       assign_original_unit (lit);
-      if (bchecker) bchecker->add_derived_unit_clause (lit, !derived_original);
+      if (bchecker)
+        bchecker->add_derived_unit_clause (lit, !derived_original);
     } else {
       Clause * c = new_clause (false);
       watch_clause (c);
-      if (derived_original && bchecker)
+      if (bchecker && derived_original)
         bchecker->add_derived_clause (c);
     }
     if (derived_original) {
@@ -453,7 +454,8 @@ void Internal::add_new_original_clause () {
         proof->add_derived_clause (clause);
         proof->delete_clause (original);
       }
-      if (bchecker) bchecker->delete_clause (original, true);
+      if (bchecker)
+        bchecker->delete_clause (original, true);
     }
   }
   clause.clear ();

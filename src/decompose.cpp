@@ -256,7 +256,7 @@ bool Internal::decompose_round () {
       LOG (c, "unit %d after substitution", clause[0]);
       assign_unit (clause[0]);
       mark_garbage (c);
-      ///TODO: Might need to allocate a new unit clause
+      assert (0 && "notify bchecker");
       new_unit = true;
       garbage++;
     } else if (c->literals[0] != clause[0] ||

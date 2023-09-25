@@ -146,27 +146,28 @@ void BChecker::revive_internal_clause (int i) {
   Clause * c = 0;
   if (bc->size == 1) {
     int lit = bc->literals[0];
-    ///TODO: might need to allocate a new unit clause here
     assert (internal->var (lit).reason);
     assert (internal->fixed (lit) > 0);
     if (internal->internal->var (lit).reason->size == 1)
       c = internal->internal->var (lit).reason, c->garbage = false;
-    else c = internal->new_unit_clause (lit, true /* if it was deleted before, then it should be redundant...*/);
+    else c = internal->new_unit_clause (lit, true);
   } else {
     vector<int> & clause = internal->clause;
     assert (clause.empty());
     for (unsigned j = 0; j < bc->size; j++)
       clause.push_back (bc->literals[j]);
-    c = internal->new_clause (true);
+    c = internal->new_clause (true /* if it was deleted before, this means it's redundant */);
     clause.clear();
-    ///TODO: Why is this needed? Drop this...
-    if (satisfied (internal, c))
-      for (int j = 1; j < c->size && internal->val(c->literals[1]); j++)
-        if (!internal->val(c->literals[j])) {
-          int lit = c->literals[j];
-          c->literals[j] = c->literals[1];
-          c->literals[1] = lit;
-        }
+    {
+      ///NOTE: This is from the Minisat patch. However, I'm still not sure why is this needed. Drop this?
+      // if (satisfied (internal, c))
+      //   for (int j = 1; j < c->size && internal->val(c->literals[1]); j++)
+      //     if (!internal->val(c->literals[j])) {
+      //       int lit = c->literals[j];
+      //       c->literals[j] = c->literals[1];
+      //       c->literals[1] = lit;
+      //     }
+    }
     internal->watch_clause (c);
   }
   assert (c);
@@ -184,6 +185,9 @@ void BChecker::stagnate_internal_clause (const int i) {
   if (c->size > 1)
     internal->unwatch_clause (c);
   if (!c->garbage)
+    ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
+    // clauses as deleted (produce 'd ...' lines) as soon they are marked
+    // garbage.
     internal->mark_garbage (c);
 }
 
@@ -195,10 +199,9 @@ void BChecker::shrink_internal_trail (const unsigned trail_sz) {
   assert(internal->control.size () == 1);
 }
 
-// The internal solver does not support reactivation of
-// fixed literals. However, this is needed to be able to
-// propagate these literals again.
-///TODO: Drop this...
+///NOTE: The internal solver does not support reactivation
+// of fixed literals. However, this is needed to be able
+// to propagate these literals again.
 void BChecker::reactivate_fixed (int l) {
   Flags & f = internal->flags (l);
   assert (f.status == Flags::FIXED);
@@ -220,18 +223,23 @@ void BChecker::undo_trail_literal (int lit) {
   assert (!internal->val (lit));
   assert (internal->active (lit));
   Var & v = internal->var (lit);
-  assert (v.reason);
+  // v.reason = 0;
   v.reason->reason = false;
 }
 
 void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
-  assert (c && trail_sz > 0 && c->size > 0);
-  assert (trail_sz <= internal->trail.size());
-  assert (is_on_trail (c));
+#ifndef NDEBUG
+  assert (trail_sz > 0 && trail_sz <= internal->trail.size());
+  assert (c && is_on_trail (c));
+#endif
+
   int clit = c->literals[0];
+
+#ifndef NDEBUG
   assert (internal->var (clit).reason == c);
   assert (internal->val (clit) > 0);
+#endif
 
   while (internal->trail[trail_sz - 1] != clit)
   {
@@ -255,8 +263,11 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 }
 
 bool BChecker::is_on_trail (Clause * c) {
+  assert (c);
   assert (internal->protected_reasons);
   return c->reason;
+  // int lit = c->literals[0];
+  // return internal->val (lit) > 0 && internal->var (lit).reason == c;
 }
 
 void BChecker::mark_core (Clause * c) {
@@ -401,6 +412,9 @@ void BChecker::check_environment () {
     Clause * c = counterparts[i];
     assert (bc && (!deleted || !c));
     if (!deleted && c && c->garbage)
+      ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
+      // clauses as deleted (produce 'd ...' lines) as soon they are marked
+      // garbage.
       assert (c->size == 2);
   }
 }
@@ -425,14 +439,17 @@ bool BChecker::validate () {
     check_environment ();
 #endif
 
-  ///NOTE: Assert that conflicting assumptions and failing constraint
-  // are being cached as learnt clauses if any (revisit src/assume.cpp).
-
-  ///TODO: Check which has more overhead:
+  ///TODO:
   // 1- either protect all reasons once and check ->reason flag.
   //    make sure to set internal->protected_reasons accordingly.
-  // 2- or use the classical Minisat way (Solver::locked ()).
+  ///   ISSUE: Using Internal::Clause::reason flag is problematic. During
+  //    the undo_trail_core () procedure, the bchecker has to set c->reason
+  //    to false which violates the internal->protected_reasons and this
+  //    may lead to free'ing reason clauses!.
+  //
   internal->protect_reasons ();
+  //
+  // 2- or use the classical Minisat way (Solver::locked ()).
 
   internal->flush_all_occs_and_watches ();
 
@@ -498,14 +515,14 @@ bool BChecker::validate () {
   ///TODO: Clean up internal clauses that were created for validation purposes.
   // Can we avoid adding clauses of size (1)? That would be elegant.
 
-  // printf ("Core lemmas are: \n");
-  // for (Clause * c : internal->clauses) {
-  //   if (c->core) {
-  //     for (int i = 0; i < c->size; i++)
-  //       printf ("%d ", c->literals[i]);
-  //     printf ("\n");
-  //   }
-  // }
+  printf ("Core lemmas are: \n");
+  for (Clause * c : internal->clauses) {
+    if (c->core) {
+      for (int i = 0; i < c->size; i++)
+        printf ("%d ", c->literals[i]);
+      printf ("\n");
+    }
+  }
 
   validating = false;
 
@@ -585,7 +602,7 @@ void BChecker::add_derived_unit_clause (const int lit, bool original) {
   Clause * r = internal->var(lit).reason;
   Clause * unit = 0;
   if (!r || r->size > 1)
-    unit = internal->new_unit_clause (lit, !original);
+    unit = internal->new_unit_clause (lit, true);
   else
     unit = r;
   if (!original) append_lemma (insert ({lit}), unit);
@@ -630,10 +647,6 @@ void BChecker::flush_clause (Clause * c) {
   assert (c);
   invalidate_counterpart (c, proof.size() + 1);
   vector<int> flushed;
-  ///TODO: Do we need to move falsified literals to the right here?
-  // This is done during the deletion of original cluases that have
-  // got their false literals removed in order for the reviving to
-  // watch the unassigned literals.
   for (int i = 0; i < c->size; i++) {
     int internal_lit = c->literals[i];
     if (internal->fixed (internal_lit) >= 0)
@@ -641,12 +654,6 @@ void BChecker::flush_clause (Clause * c) {
   }
   assert (flushed.size() > 1);
   append_lemma (insert (flushed), c);
-  // for (int i = 0; i < c->size; i++)
-  //   printf ("%d ", c->literals[i]);
-  // printf ("--reduced to--> ");
-  // for (int i = 0; i < flushed.size (); i++)
-  //   printf ("%d ", flushed[i]);
-  // printf ("\n");
   append_lemma (insert (c), 0, true);
   STOP (bchecking);
 }
@@ -658,7 +665,15 @@ void BChecker::delete_clause (const vector<int> & c, bool original) {
   START (bchecking);
   LOG (c, "BCHECKER clause deletion notification");
   vector<int> modified (c);
+  assert (original);
   if (original) {
+    ///NOTE: This is an original clause that has been reduced to an irredundant
+    // dervied clause after removing all falsified literals. This clause wasn't
+    // allocated in memory. However, it needs to be revived for correct core
+    // extraction and complete validation.
+    // Moving the falsified literals to the end of the clause is crucial for
+    // watching this clause after it is revived in the future as we want to watch
+    // the unassigned literals.
     int sz = modified.size ();
     for (int i = 0; i < sz; i++) {
       if (internal->val (c[i]) < 0) {
@@ -673,7 +688,7 @@ void BChecker::delete_clause (const vector<int> & c, bool original) {
 }
 
 void BChecker::delete_clause (Clause * c) {
-  ///TODO: Need to handle  incrementality. The bchecker should be aware of
+  ///TODO: Need to handle incrementality. The bchecker should be aware of
   // clauses that were deleted during the trimming/validation process. especially
   // the garbage clauses of size == 2 ??.
   if (inconsistent) return;
@@ -716,19 +731,18 @@ void BChecker::update_moved_counterparts () {
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
 
-    assert (!deleted || !c);
+    if (deleted || !c || !c->moved)
+       continue;
 
-    if (deleted || !c) continue;
-
-    assert (c->size == 2 || !c->garbage || c->moved);
-
-    if (!c->moved) continue;
-
-    assert (c->copy && c != c->copy);
     auto & old_indexes = cp_ordering[c];
     auto & new_indexes = cp_ordering[c->copy];
+
+#ifndef NDEBUG
+    assert (c->copy && c != c->copy);
     assert (old_indexes.size() == 1);
     assert (new_indexes.empty());
+#endif
+
     for (int j : old_indexes)
       new_indexes.push_back (j);
     old_indexes.clear ();
