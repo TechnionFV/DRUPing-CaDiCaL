@@ -223,7 +223,7 @@ void BChecker::undo_trail_literal (int lit) {
   assert (!internal->val (lit));
   assert (internal->active (lit));
   Var & v = internal->var (lit);
-  // v.reason = 0;
+  assert (v.reason);
   v.reason->reason = false;
 }
 
