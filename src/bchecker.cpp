@@ -132,13 +132,6 @@ BCheckerClause * BChecker::insert (const vector<int> & lits) {
   return bc;
 }
 
-static bool satisfied (Internal * internal, Clause * c) {
-  for (int i = 0; i < c->size; i++)
-    if (internal->val(c->literals[i]) > 0)
-      return true;
-  return false;
-}
-
 ///TODO: Avoid unnecessary allocations and reuse valid garbage Clause references when possible.
 void BChecker::revive_internal_clause (int i) {
   assert (!counterparts[i] && proof[i].second);
@@ -283,10 +276,12 @@ void BChecker::conflict_analysis_core () {
 
   auto got_value_by_propagation = [this](int lit) {
     assert (internal->val (lit) != 0);
+#ifndef NDEBUG
     int trail = internal->var (lit).trail;
-    assert (trail >= 0 && trail < internal->trail.size());
+    assert (trail >= 0 && trail < int (internal->trail.size()));
     assert (internal->trail[trail] == -lit);
-    return trail > internal->control.back().trail;
+#endif
+    return internal->var (lit).trail > internal->control.back().trail;
   };
 
   ///TODO: Use internal->mark|ed () instead.
@@ -350,7 +345,7 @@ bool BChecker::validate_lemma (Clause * lemma) {
 
   assert (decisions.size());
   internal->search_assume_multiple_decisions (decisions);
-  assert (internal->level  == decisions.size());
+  assert (internal->level  == int (decisions.size()));
 
   for (int i = 0; i < lemma->size; i++)
     if (!internal->var(lemma->literals[i]).level && internal->val(lemma->literals[i]))
@@ -710,7 +705,6 @@ void BChecker::update_moved_counterparts () {
   //   old_indexes.clear ();
   // }
   for (unsigned i = 0; i < proof.size(); i++) {
-    BCheckerClause * bc = proof[i].first;
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
 
