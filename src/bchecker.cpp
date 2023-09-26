@@ -224,7 +224,6 @@ void BChecker::undo_trail_literal (int lit) {
   assert (internal->active (lit));
   Var & v = internal->var (lit);
   assert (v.reason);
-  v.reason->reason = false;
 }
 
 void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
@@ -264,10 +263,8 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
 bool BChecker::is_on_trail (Clause * c) {
   assert (c);
-  assert (internal->protected_reasons);
-  return c->reason;
-  // int lit = c->literals[0];
-  // return internal->val (lit) > 0 && internal->var (lit).reason == c;
+  int lit = c->literals[0];
+  return internal->val (lit) > 0 && internal->var (lit).reason == c;
 }
 
 void BChecker::mark_core (Clause * c) {
@@ -438,20 +435,6 @@ bool BChecker::validate () {
 #ifndef NDEBUG
     check_environment ();
 #endif
-
-  ///TODO:
-  // 1- either protect all reasons once and check ->reason flag.
-  //    make sure to set internal->protected_reasons accordingly.
-  ///   ISSUE: Using Internal::Clause::reason flag is problematic. During
-  //    the undo_trail_core () procedure, the bchecker has to set c->reason
-  //    to false which violates the internal->protected_reasons and this
-  //    may lead to free'ing reason clauses!.
-  //
-  internal->protect_reasons ();
-  //
-  // 2- or use the classical Minisat way (Solver::locked ()).
-
-  internal->flush_all_occs_and_watches ();
 
   Clause * last_conflict = internal->conflict;
   assert (last_conflict); // for workaround - handle assumptions?
