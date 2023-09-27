@@ -17,7 +17,7 @@ struct BCheckerClause {
   BCheckerClause * next;
   uint64_t hash;
   unsigned size;
-  bool original;
+  Clause * unit_clause;
   int literals[1];
 };
 

@@ -34,6 +34,7 @@ BChecker::~BChecker () {
     for (BCheckerClause * c = clauses[i], * next; c; c = next)
       next = c->next, delete_clause (c);
   delete [] clauses;
+  ///TODO: deallocate all unit clauses.
 }
 
 /*------------------------------------------------------------------------*/
@@ -96,7 +97,7 @@ BCheckerClause * BChecker::new_clause (const vector<int> & lits, const uint64_t 
   res->next = 0;
   res->hash = hash;
   res->size = size;
-  res->original = false;
+  res->unit_clause = 0;
   int * literals = res->literals;
   int * p = literals;
   for (const auto & lit : lits)
@@ -136,47 +137,31 @@ BCheckerClause * BChecker::insert (const vector<int> & lits) {
 void BChecker::revive_internal_clause (int i) {
   assert (!counterparts[i] && proof[i].second);
   BCheckerClause * bc = proof[i].first;
-  Clause * c = 0;
-  if (bc->size == 1) {
-    int lit = bc->literals[0];
-    assert (internal->var (lit).reason);
-    assert (internal->fixed (lit) > 0);
-    if (internal->internal->var (lit).reason->size == 1)
-      c = internal->internal->var (lit).reason, c->garbage = false;
-    else c = internal->new_unit_clause (lit, true);
-  } else {
-    vector<int> & clause = internal->clause;
-    assert (clause.empty());
-    for (unsigned j = 0; j < bc->size; j++)
-      clause.push_back (bc->literals[j]);
-    c = internal->new_clause (true /* if it was deleted before, this means it's redundant */);
-    clause.clear();
-    {
-      ///NOTE: This is from the Minisat patch. However, I'm still not sure why is this needed. Drop this?
-      // if (satisfied (internal, c))
-      //   for (int j = 1; j < c->size && internal->val(c->literals[1]); j++)
-      //     if (!internal->val(c->literals[j])) {
-      //       int lit = c->literals[j];
-      //       c->literals[j] = c->literals[1];
-      //       c->literals[1] = lit;
-      //     }
-    }
-    internal->watch_clause (c);
-  }
-  assert (c);
-  assert (revive_ordering[i].empty () || revive_ordering[i].size() == 1);
+  assert (bc->size > 1);
+  ///NOTE: Unit clauses are owned by bchecker and can be marked as garbage.
+  // The motivation behind allocating unit clauses is to simplify the code.
+  ///TODO: bchecker is responsible for deleting (deallocating) these clauses.
+  vector<int> & clause = internal->clause;
+  assert (clause.empty());
+  for (unsigned j = 0; j < bc->size; j++)
+    clause.push_back (bc->literals[j]);
+  Clause * c = internal->new_clause (true /* if it was deleted before, this means it's redundant */);
+  clause.clear();
+  internal->watch_clause (c);
+  assert (c && (revive_ordering[i].empty () || revive_ordering[i].size() == 1));
   for (int j : revive_ordering[i]) {
     assert (revive_ordering[j].empty ()); // Are chains even possible?
     assert (!proof[j].second && !counterparts[j]);
     counterparts[j] = c;
   }
+  counterparts[i] = c;
 }
 
 void BChecker::stagnate_internal_clause (const int i) {
   assert (proof.size() == counterparts.size());
   Clause * c = counterparts[i];
-  if (c->size > 1)
-    internal->unwatch_clause (c);
+  if (c->size == 1) return;
+  internal->unwatch_clause (c);
   if (!c->garbage)
     ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
     // clauses as deleted (produce 'd ...' lines) as soon they are marked
@@ -386,12 +371,14 @@ void BChecker::mark_core_trail_antecedents () {
 }
 
 void BChecker::put_units_back () {
+  ///TODO: Consider maintaining a separated linked list
+  // for clauses of size 1.
   for (Clause * c : internal->clauses)
     if (c->size == 1) {
       int lit = c->literals[0];
+      assert (!c->garbage);
       if (!internal->val (lit))
         internal->search_assign (lit, c);
-        ///TODO: internal->search_assign (lit, 0); instead?
     }
 }
 
@@ -455,8 +442,8 @@ bool BChecker::validate () {
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
 
-    proof.pop_back();
-    counterparts.pop_back();
+    // proof.pop_back();
+    // counterparts.pop_back();
 
     assert (bc && bc->size);
     assert (!deleted || !c);
@@ -488,11 +475,6 @@ bool BChecker::validate () {
 
   put_units_back ();
 
-  internal->flush_all_occs_and_watches ();
-
-  ///TODO: Clean up internal clauses that were created for validation purposes.
-  // Can we avoid adding clauses of size (1)? That would be elegant.
-
   printf ("Core lemmas are: \n");
   for (Clause * c : internal->clauses) {
     if (c->core) {
@@ -516,7 +498,7 @@ exit:
 void BChecker::invalidate_counterpart (Clause * c, int i) {
   assert (c && proof.size() == counterparts.size());
   vector<unsigned> & indexes = cp_ordering[c];
-  assert (!validating || indexes.size() == 1);
+  assert (indexes.size() < 2);
   if (indexes.size ()) stats.counterparts--;
   for (int j : indexes) {
     assert (counterparts[j] == c);
@@ -530,7 +512,7 @@ void BChecker::invalidate_counterpart (Clause * c, int i) {
 }
 
 void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
-  assert (bc && (deleted || c));
+  assert (deleted || c);
   stats.added++;
   if (deleted) stats.deleted++;
   else stats.derived++;
@@ -575,17 +557,16 @@ void BChecker::add_derived_clause (Clause * c) {
 void BChecker::add_derived_unit_clause (const int lit, bool original) {
   if (inconsistent) return;
   START (bchecking);
-  LOG (c, "BCHECKER derived clause notification");
+  LOG (lit, "BCHECKER derived clause notification");
   assert (lit);
   Clause * r = internal->var(lit).reason;
-  Clause * unit = 0;
-  if (!r || r->size > 1)
-    unit = internal->new_unit_clause (lit, true);
-  else
-    unit = r;
-  if (!original) append_lemma (insert ({lit}), unit);
-  if (!r) internal->var(lit).reason = unit;
-  assert (unit->size == 1 && unit->literals[0] == lit);
+  assert (!r || r->size > 1);
+  BCheckerClause * bc = insert ({lit});
+  Clause * c = bc->unit_clause = internal->new_unit_clause (lit, true);
+  if (!original)
+    append_lemma (insert ({lit}), c);
+  if (!r)
+    internal->var(lit).reason = c;
   assert (internal->var(lit).reason->literals[0] == lit);
   STOP (bchecking);
 }

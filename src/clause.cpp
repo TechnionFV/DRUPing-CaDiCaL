@@ -70,8 +70,8 @@ void Internal::mark_added (Clause * c) {
 
 ///TODO: Try avoid allocation of unit clauses and changing internal structures.
 Clause * Internal::new_unit_clause (int lit, bool red, int glue) {
-  const int size = 1;
 
+  const int size = 1;
   if (glue > size) glue = size;
 
   // Determine whether this clauses should be kept all the time.
@@ -331,6 +331,7 @@ void Internal::delete_clause (Clause * c) {
 //
 void Internal::mark_garbage (Clause * c) {
 
+  if (c->size == 1) return;
   assert (!c->garbage);
 
   // Delay tracing deletion of binary clauses.  See the discussion above in
