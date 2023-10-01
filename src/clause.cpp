@@ -428,7 +428,6 @@ void Internal::add_new_original_clause () {
   }
   if (skip) {
     if (proof) proof->delete_clause (original);
-    // if (bchecker) bchecker->delete_clause (original, true);
   } else {
     size_t size = clause.size ();
     const bool derived_original = original.size () > size;
@@ -458,6 +457,7 @@ void Internal::add_new_original_clause () {
       if (bchecker)
         bchecker->delete_clause (original, true);
     }
+    // if (!size && bchecker) bchecker->validate (true /* overconstrained */);
   }
   clause.clear ();
 }

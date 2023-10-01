@@ -201,6 +201,7 @@ struct Internal {
   vector<int> probes;           // remaining scheduled probes
   vector<Level> control;        // 'level + 1 == control.size ()'
   vector<Clause*> clauses;      // ordered collection of all clauses
+  vector<Clause*> unit_clauses; // ordered collection of all unit clauses
   Averages averages;            // glue, size, jump moving averages
   Limit lim;                    // limits for various phases
   Last last;                    // statistics at last occurrence
@@ -456,6 +457,7 @@ struct Internal {
   // of a clause and during connecting back all watches after preprocessing.
   //
   inline void watch_clause (Clause * c) {
+    assert (c->size > 1);
     const int l0 = c->literals[0];
     const int l1 = c->literals[1];
     watch_literal (l0, l1, c);
@@ -463,6 +465,7 @@ struct Internal {
   }
 
   inline void unwatch_clause (Clause * c) {
+    assert (c->size > 1);
     const int l0 = c->literals[0];
     const int l1 = c->literals[1];
     remove_watch (watches (l0), c);

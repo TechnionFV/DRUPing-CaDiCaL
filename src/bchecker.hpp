@@ -17,7 +17,7 @@ struct BCheckerClause {
   BCheckerClause * next;
   uint64_t hash;
   unsigned size;
-  Clause * unit_clause;
+  bool marked_garbage;
   int literals[1];
 };
 
@@ -33,10 +33,16 @@ class BChecker {
   //
   vector<Clause*> counterparts;
 
+  // stack of original units to be put back on trail
+  //
+  vector<int> original_units;
+
   // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
   //
   unordered_map<Clause *, vector<unsigned>> cp_ordering;
   unordered_map<int, vector<unsigned>> revive_ordering;
+
+  vector<int> failing_assumptions;
 
   void invalidate_counterpart (Clause * c, int i);
   void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
@@ -81,10 +87,9 @@ class BChecker {
   void undo_trail_core (Clause * c, unsigned & trail_sz);
   void undo_trail_literal (int);
   bool is_on_trail (Clause *);
-  void conflict_analysis_core ();
 
   void mark_core (Clause *);
-  void put_units_back ();
+  void mark_last_conflict (bool);
 
   void shrink_internal_trail (const unsigned);
   void clear ();
@@ -92,9 +97,13 @@ class BChecker {
   void check_environment ();
 
   bool validate_lemma (Clause *);
+  void conflict_analysis_core ();
 
+  void put_units_back ();
   void mark_core_trail_antecedents ();
+  void reallocate ();
 
+  bool dying;
 
   struct {
 
@@ -119,6 +128,8 @@ public:
   void add_derived_unit_clause (const int, bool original = false);
   void add_derived_empty_clause ();
 
+  void add_failed_assumptions (const vector<int> &);
+
   void strengthen_clause (Clause * c, int lit);
   void flush_clause (Clause *);
 
@@ -127,8 +138,10 @@ public:
 
   void update_moved_counterparts ();
 
-  bool validating;              // On during validating
-  bool validate ();             // validate the clausal proof
+  bool validating;
+  bool validate (bool overconstrained = false);
+
+  void dump_core ();
 
   void print_stats ();
 };

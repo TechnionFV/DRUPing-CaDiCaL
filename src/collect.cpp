@@ -91,7 +91,7 @@ void Internal::protect_reasons () {
   size_t count = 0;
   for (const auto & lit : trail) {
     if (!bchecker && !active(lit)) continue;
-    ///TODO: assert (!flags(lit).eliminated ());
+    // assert (!flags(lit).eliminated ());
     assert (val (lit));
     Var & v = var (lit);
     assert (bchecker || v.level > 0);
@@ -194,8 +194,9 @@ void Internal::flush_all_occs_and_watches () {
 
   if (watching ()) {
     Watches tmp;
-    for (auto idx : vars)
+    for (auto idx : vars) {
       flush_watches (idx, tmp), flush_watches (-idx, tmp);
+    }
   }
 }
 

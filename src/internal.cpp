@@ -54,12 +54,12 @@ Internal::Internal ()
 }
 
 Internal::~Internal () {
+  if (bchecker) delete bchecker;
   for (const auto & c : clauses)
     delete_clause (c);
   if (proof) delete proof;
   if (tracer) delete tracer;
   if (checker) delete checker;
-  if (bchecker) delete bchecker;
   if (vals) { vals -= vsize; delete [] vals; }
 }
 
@@ -198,7 +198,7 @@ int Internal::cdcl_loop_with_inprocessing () {
   else        { START (unstable); report ('{'); }
 
   while (!res) {
-         if (unsat) res = 20;
+    if (unsat) res = 20;
     else if (unsat_constraint) res = 20;
     else if (!propagate ()) analyze ();      // propagate and analyze
     else if (iterating) iterate ();          // report learned unit
@@ -210,11 +210,16 @@ int Internal::cdcl_loop_with_inprocessing () {
     else if (rephasing ()) rephase ();       // reset variable phases
     else if (reducing ()) reduce ();         // collect useless clauses
     else if (probing ()) probe ();           // failed literal probing
-    else if (subsuming ()) subsume ();       // subsumption algorithm
-    else if (eliminating ()) elim ();        // variable elimination
-    else if (compacting ()) compact ();      // collect variables
-    else if (conditioning ()) condition ();  // globally blocked clauses
+    // else if (subsuming ()) subsume ();       // subsumption algorithm
+    // else if (eliminating ()) elim ();        // variable elimination
+    // else if (compacting ()) compact ();      // collect variables
+    // else if (conditioning ()) condition ();  // globally blocked clauses
     else res = decide ();                    // next decision
+  }
+
+  if (res == 20 && bchecker) {
+    assert (!opts.chrono && opts.bcheck);
+    printf ("Basel: validating: %d\n", bchecker->validate ());
   }
 
   if (stable) { STOP (stable);   report (']'); }
@@ -593,17 +598,11 @@ int Internal::solve (bool preprocess_only) {
     init_preprocessing_limits ();
     if (!preprocess_only) init_search_limits ();
   }
-  if (!res) res = preprocess ();
+  // if (!res) res = preprocess ();
   if (!preprocess_only) {
     if (!res) res = local_search ();
     if (!res) res = lucky_phases ();
     if (!res) res = cdcl_loop_with_inprocessing ();
-  }
-
-
-  // workaround...
-  if (res == 20 && opts.bcheck && bchecker) {
-    printf ("Basel: validating: %d\n", bchecker->validate ());
   }
 
   reset_solving ();

@@ -82,6 +82,8 @@ void Internal::failing () {
     if (failed_unit) {
       assert (failed == failed_unit);
       LOG ("root-level falsified assumption %d", failed);
+      if (bchecker)
+        bchecker->add_failed_assumptions ({failed});
       goto DONE;
     }
 
@@ -93,6 +95,8 @@ void Internal::failing () {
       const unsigned bit = bign (-failed);
       assert (!(f.failed & bit));
       f.failed |= bit;
+      if (bchecker)
+        bchecker->add_failed_assumptions ({failed});
       goto DONE;
     }
 
@@ -175,8 +179,11 @@ void Internal::failing () {
         proof->add_derived_clause(clause);
         proof->delete_clause(clause);
       }
+      if (bchecker)
+        bchecker->add_failed_assumptions (clause);
     } else {
       for (auto lit : constraint) {
+        assert (0 && "notify bchecker");
         clause.push_back(-lit);
         external->check_learned_clause ();
         if (proof) {
@@ -186,8 +193,6 @@ void Internal::failing () {
         clause.pop_back();
       }
     }
-      assert (0 && "need to add above clauses to bchecker");
-
     clause.clear ();
   }
 

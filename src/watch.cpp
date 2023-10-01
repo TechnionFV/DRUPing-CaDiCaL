@@ -33,7 +33,7 @@ void Internal::connect_watches (bool irredundant_only) {
   //
   for (const auto & c : clauses) {
     if (irredundant_only && c->redundant) continue;
-    if (c->garbage || c->size > 2) continue;
+    if (c->garbage || c->size != 2) continue;
     watch_clause (c);
   }
 
@@ -41,7 +41,7 @@ void Internal::connect_watches (bool irredundant_only) {
   //
   for (const auto & c : clauses) {
     if (irredundant_only && c->redundant) continue;
-    if (c->garbage || c->size == 2) continue;
+    if (c->garbage || c->size <= 2) continue;
     watch_clause (c);
     if (!level) {
       const int lit0 = c->literals[0];
