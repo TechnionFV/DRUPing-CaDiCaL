@@ -46,7 +46,7 @@ inline int Internal::assignment_level (int lit, Clause * reason) {
 
 /*------------------------------------------------------------------------*/
 
-void Internal::search_assign (int lit, Clause * reason) {
+inline void Internal::search_assign (int lit, Clause * reason) {
 
   if (level) require_mode (SEARCH);
 

@@ -432,11 +432,11 @@ void BChecker::reallocate () {
 }
 
 void BChecker::put_units_back () {
+  ///TODO: Is this enough to restore the trail?! ..
   for (int lit : original_units) {
     if (!internal->val (lit)) {
-      Clause * c = internal->var (lit).reason;
-      assert (c);
-      internal->search_assign (lit, c);
+      internal->assign_original_unit (lit);
+      assert (internal->var (lit).reason);
     }
   }
 }

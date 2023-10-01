@@ -201,7 +201,6 @@ struct Internal {
   vector<int> probes;           // remaining scheduled probes
   vector<Level> control;        // 'level + 1 == control.size ()'
   vector<Clause*> clauses;      // ordered collection of all clauses
-  vector<Clause*> unit_clauses; // ordered collection of all unit clauses
   Averages averages;            // glue, size, jump moving averages
   Limit lim;                    // limits for various phases
   Last last;                    // statistics at last occurrence

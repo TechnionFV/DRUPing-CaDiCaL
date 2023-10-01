@@ -193,6 +193,7 @@ void Internal::failing () {
         clause.pop_back();
       }
     }
+
     clause.clear ();
   }
 
