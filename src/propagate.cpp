@@ -52,7 +52,7 @@ inline void Internal::search_assign (int lit, Clause * reason) {
 
   const int idx = vidx (lit);
   assert (!vals[idx]);
-  assert (bchecker && bchecker->validating || !flags (idx).eliminated () || reason == decision_reason);
+  assert (git!flags (idx).eliminated () || reason == decision_reason);
   Var & v = var (idx);
   int lit_level;
 

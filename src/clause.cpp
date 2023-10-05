@@ -269,7 +269,7 @@ void Internal::mark_garbage (Clause * c) {
   if (proof && c->size != 2)
     proof->delete_clause (c);
 
-  if (bchecker && (c->size != 2 || !watching ()))
+  if (bchecker && c->size != 2)
     bchecker->delete_clause (c);
 
   assert (stats.current.total > 0);

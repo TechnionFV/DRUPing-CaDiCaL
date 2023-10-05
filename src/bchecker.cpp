@@ -93,7 +93,12 @@ void BChecker::stagnate_internal_clause (const int i) {
   assert (proof.size() == counterparts.size());
   Clause * c = counterparts[i];
   if (c->size == 1) return;
-  internal->unwatch_clause (c);
+  {
+    ///BUG: Some clauses seem to be marked as garbage and unwatched.
+    // Others are marked as garbage but still watched?
+    ///TODO:figure out what is happens with binary clauses.
+    internal->unwatch_clause (c);
+  }
   ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
   // clauses as deleted (produce 'd ...' lines) as soon they are marked
   // garbage.
@@ -330,7 +335,7 @@ void BChecker::reallocate () {
   assert (!isolate && !validating);
   lock_scope isolated (isolate);
   assert (proof.size() == counterparts.size ());
-  for (int i = 0; i < proof.size (); i++) {
+  for (unsigned i = 0; i < proof.size (); i++) {
     BCheckerClause * bc = proof[i].first;
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
@@ -343,9 +348,6 @@ void BChecker::reallocate () {
       assert (c);
       if (bc->marked_garbage) {
         bc->marked_garbage = c->garbage = false;
-        // assert (c->size == bc->size);
-        // for (int k = 0 ; k < bc->size; k++)
-        //   c->literals[k] = bc->literals[k];
         internal->watch_clause (c);
       }
     }
@@ -535,6 +537,8 @@ Clause * BChecker::new_unit_clause (const int lit, bool original) {
 
 /*------------------------------------------------------------------------*/
 
+///TODO: Consider using lazy bchecker clause allocation: allocate once the internal
+// clause is discarded from memory.
 void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
   assert (deleted || c);
   assert (bc->revive_at < 0);
@@ -582,7 +586,7 @@ void BChecker::add_derived_unit_clause (const int lit, bool original) {
   if (isolate) return;
   assert (!validating);
   START (bchecking);
-  LOG (lit, "BCHECKER derived clause notification");
+  LOG ({lit}, "BCHECKER derived clause notification");
   assert (lit);
   if (original) internal->var(lit).reason = 0;
   Clause * c = 0;
@@ -599,7 +603,7 @@ void BChecker::add_derived_empty_clause () {
   if (isolate) return;
   assert (!validating);
   START (bchecking);
-  LOG (c, "BCHECKER derived empty clause notification");
+  LOG ("BCHECKER derived empty clause notification");
   STOP (bchecking);
 }
 
