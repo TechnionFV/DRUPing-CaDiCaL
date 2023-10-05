@@ -5,22 +5,32 @@ namespace CaDiCaL {
 
 /*------------------------------------------------------------------------*/
 
+BCheckerClause::BCheckerClause (vector<int> c)
+:
+  revive_at (-1), marked_garbage (false)
+{
+  assert (c.size ());
+  for (auto i : c)
+    literals.push_back (i);
+};
+
+BCheckerClause::BCheckerClause (Clause * c)
+:
+  revive_at (-1), marked_garbage (false)
+{
+  assert (c && c->size);
+  for (auto i = c->begin (); i != c->end (); i++)
+    literals.push_back (*i);
+};
+
+/*------------------------------------------------------------------------*/
+
 BChecker::BChecker (Internal * i, bool core_units)
 :
-  internal (i), num_clauses (0), size_clauses (0), clauses (0),
-  core_units (core_units), isolate (0), validating (0)
+  internal (i), core_units (core_units),
+  isolate (0), validating (0)
 {
   LOG ("BCHECKER new");
-
-  // Initialize random number table for hash function.
-  //
-  Random random (42);
-  for (unsigned n = 0; n < num_nonces; n++) {
-    uint64_t nonce = random.next ();
-    if (!(nonce & 1)) nonce++;
-    assert (nonce), assert (nonce & 1);
-    nonces[n] = nonce;
-  }
 
   // Initialize statistics.
   //
@@ -30,121 +40,42 @@ BChecker::BChecker (Internal * i, bool core_units)
 BChecker::~BChecker () {
   LOG ("BCHECKER delete");
   isolate = true;
-  for (size_t i = 0; i < size_clauses; i++)
-    for (BCheckerClause * c = clauses[i], * next; c; c = next)
-      next = c->next, delete_clause (c);
-  delete [] clauses;
-  for (int i = 0; i < unit_clauses.size (); i++)
-    delete [] (char*) unit_clauses[i];
+  for (const auto & bc : bchecker_clauses)
+    delete (BCheckerClause *) bc;
+  for (const auto & c : unit_clauses)
+    delete [] (char*) c;
 }
 
 /*------------------------------------------------------------------------*/
 
-uint64_t BChecker::reduce_hash (uint64_t hash, uint64_t size) {
-  assert (size > 0);
-  unsigned shift = 32;
-  uint64_t res = hash;
-  while ((((uint64_t)1) << shift) > size) {
-    res ^= res >> shift;
-    shift >>= 1;
-  }
-  res &= size - 1;
-  assert (res < size);
-  return res;
-}
-
-uint64_t BChecker::compute_hash (const vector<int> & lits) {
-  ///NOTE: Hash isn't order insinsetive. Since internal Clause objects
-  // are prone to reordering we must have an order insensitive hash computation.
-  // In the meantime, sort before computing the hash value.
-  auto sorted (lits); sort(sorted.begin (), sorted.end ());
-  unsigned i = 0, j = 0;
-  uint64_t hash = 0;
-  for (i = 0; i < sorted.size (); i++) {
-    int lit = sorted[i];
-    hash += nonces[j++] * (uint64_t) lit;
-    if (j == num_nonces) j = 0;
-  }
-  return hash;
-}
-
-void BChecker::enlarge_clauses () {
-  assert (num_clauses == size_clauses);
-  const uint64_t new_size_clauses = size_clauses ? 2*size_clauses : 1;
-  LOG ("BCHECKER enlarging clauses of bchecker from %" PRIu64 " to %" PRIu64,
-    (uint64_t) size_clauses, (uint64_t) new_size_clauses);
-  BCheckerClause ** new_clauses;
-  new_clauses = new BCheckerClause * [ new_size_clauses ];
-  clear_n (new_clauses, new_size_clauses);
-  for (uint64_t i = 0; i < size_clauses; i++) {
-    for (BCheckerClause * c = clauses[i], * next; c; c = next) {
-      next = c->next;
-      const uint64_t h = reduce_hash (c->hash, new_size_clauses);
-      c->next = new_clauses[h];
-      new_clauses[h] = c;
-    }
-  }
-  delete [] clauses;
-  clauses = new_clauses;
-  size_clauses = new_size_clauses;
-}
-
-BCheckerClause * BChecker::new_clause (const vector<int> & lits, const uint64_t hash) {
-  const size_t size = lits.size ();
-  assert (0 < size && size <= UINT_MAX);
-  const size_t surplus_bytes = size - 1;
-  const size_t bytes = sizeof (BCheckerClause) + (surplus_bytes-1) * sizeof (int);
-  BCheckerClause * res = (BCheckerClause *) new char [bytes];
-  res->next = 0;
-  res->hash = hash;
-  res->size = size;
-  res->marked_garbage = false;
-  int * literals = res->literals;
-  int * p = literals;
-  for (const auto & lit : lits)
-    *p++ = lit;
-
-  num_clauses++;
-
-  return res;
-}
-
-void BChecker::delete_clause (BCheckerClause * c) {
-  assert (c->size > 0);
-  assert (num_clauses);
-  num_clauses--;
-  delete [] (char*) c;
-}
-
 BCheckerClause * BChecker::insert (Clause * c) {
+  stats.insertions++;
   vector<int> lits;
-  for (int i = 0; i < c->size; i++)
+  for (int  i = 0; i < c->size; i++)
     lits.push_back (c->literals[i]);
-  return insert (lits);
+  BCheckerClause * bc = new BCheckerClause (lits);
+  bchecker_clauses.push_back (bc);
+  return bc;
 }
 
 BCheckerClause * BChecker::insert (const vector<int> & lits) {
   stats.insertions++;
-  if (num_clauses == size_clauses) enlarge_clauses ();
-  uint64_t hash = compute_hash (lits);
-  const uint64_t h = reduce_hash (hash, size_clauses);
-  BCheckerClause * bc = new_clause (lits, hash);
-  bc->next = clauses[h];
-  clauses[h] = bc;
+  BCheckerClause * bc = new BCheckerClause (lits);
+  bchecker_clauses.push_back (bc);
   return bc;
 }
 
 void BChecker::revive_internal_clause (int i) {
   assert (!counterparts[i] && proof[i].second);
   BCheckerClause * bc = proof[i].first;
-  assert (bc->size > 1);
+  assert (bc->literals.size ());
   ///NOTE: Unit clauses should not be deleted.
   // The motivation behind allocating unit clauses is to simplify the code.
   ///TODO: set eliminated flag to false if there are eliminated vars.
   vector<int> & clause = internal->clause;
   assert (clause.empty());
-  for (unsigned j = 0; j < bc->size; j++)
-    clause.push_back (bc->literals[j]);
+  for (int j : bc->literals)
+    clause.push_back (j);
   Clause * c = internal->new_clause (true /* if it was deleted before, this means it's redundant */);
   clause.clear();
   internal->watch_clause (c);
@@ -484,7 +415,7 @@ bool BChecker::validate (bool overconstrained) {
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
 
-    assert (bc && bc->size);
+    assert (bc && bc->literals.size ());
     assert (!deleted || !c);
 
     if (deleted) {

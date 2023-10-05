@@ -54,7 +54,7 @@ Internal::Internal ()
 }
 
 Internal::~Internal () {
-  if (bchecker) delete bchecker;
+  if (bchecker) delete bchecker, bchecker = 0;
   for (const auto & c : clauses)
     delete_clause (c);
   if (proof) delete proof;

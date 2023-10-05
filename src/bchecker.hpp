@@ -13,12 +13,16 @@ namespace CaDiCaL {
 
 /*------------------------------------------------------------------------*/
 
-struct BCheckerClause {
-  BCheckerClause * next;
-  uint64_t hash;
-  unsigned size;
+class Clause;
+
+class BCheckerClause {
+public:
+  unsigned revive_at;
   bool marked_garbage;
-  int literals[1];
+  vector<int> literals;
+  BCheckerClause (vector<int> c);
+  BCheckerClause (Clause * c);
+  ~BCheckerClause () = default;
 };
 
 class BChecker {
@@ -49,30 +53,7 @@ class BChecker {
   void invalidate_counterpart (Clause * c, int i);
   void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
 
-  bool inconsistent;            // found or added empty clause
-
-  uint64_t num_clauses;         // number of clauses in hash table
-  uint64_t size_clauses;        // size of clause hash table
-  BCheckerClause ** clauses;    // hash table of clauses
-
-  static const unsigned num_nonces = 4;
-
-  uint64_t nonces[num_nonces];                      // random numbers for hashing
-  uint64_t compute_hash (const vector<int> &);      // compute and save hash value of clause
-
-  // Reduce hash value to the actual size.
-  //
-  static uint64_t reduce_hash (uint64_t hash, uint64_t size);
-
-  // enlarge hash table for clauses
-  //
-  void enlarge_clauses ();
-
-  BCheckerClause * new_clause (const vector<int> & lits, const uint64_t hash);
-  void delete_clause (BCheckerClause *);
-
-  // insert clause in hash table
-  //
+  vector<BCheckerClause *> bchecker_clauses;
   BCheckerClause * insert (Clause *);
   BCheckerClause * insert (const vector<int> &);
 
