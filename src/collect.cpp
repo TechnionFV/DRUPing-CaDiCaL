@@ -211,6 +211,7 @@ void Internal::update_reason_references () {
     if (!c) continue;
     LOG (c, "updating assigned %d reason", lit);
     assert (c->reason);
+    if (bchecker && c->size == 1) continue;
     assert (c->moved);
     Clause * d = c->copy;
     v.reason = d;

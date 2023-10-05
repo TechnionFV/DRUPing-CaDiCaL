@@ -33,9 +33,11 @@ class BChecker {
   //
   vector<Clause*> counterparts;
 
-  // stack of original units to be put back on trail
+  // stack containig clauses of size 1
   //
-  vector<int> original_units;
+  vector<Clause *> unit_clauses;
+  Clause * new_unit_clause (const int lit, bool original);
+
 
   // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
   //
@@ -103,7 +105,20 @@ class BChecker {
   void mark_core_trail_antecedents ();
   void reallocate ();
 
-  bool dying;
+  bool isolate;
+
+  struct lock_scope {
+    bool & key;
+    lock_scope (bool & key_) : key (key_) { assert (!key_); key = true; };
+    ~lock_scope () { key = false; }
+  };
+
+  struct save_scope {
+    bool & key;
+    bool initial;
+    save_scope (bool & key_) : key (key_) , initial (key_) {};
+    ~save_scope () { key = initial; };
+  };
 
   struct {
 
@@ -114,8 +129,8 @@ class BChecker {
     int64_t deleted;            // number of deleted clauses
 
     int64_t insertions;         // number of clauses added to hash table
-    int64_t collisions;         // number of hash collisions in 'find'
-    int64_t searches;           // number of searched clauses in 'find'
+
+    int64_t units;              // number of searched clauses in 'find'
 
   } stats;
 

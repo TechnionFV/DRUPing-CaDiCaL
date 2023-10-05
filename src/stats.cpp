@@ -316,8 +316,7 @@ void BChecker::print_stats () {
   MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all derived clauses", stats.counterparts, percent (stats.counterparts, stats.derived));
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all derived clauses", stats.deleted, percent (stats.deleted, stats.derived));
   MSG ("insertions:      %15" PRId64 "   %10.2f %%  of all clauses", stats.insertions, percent (stats.insertions, stats.added));
-  MSG ("collisions:      %15" PRId64 "   %10.2f    per search", stats.collisions, relative (stats.collisions, stats.searches));
-  MSG ("searches:        %15" PRId64 "", stats.searches);
+  MSG ("units:           %15" PRId64 "   %10.2f %%  of all derived clauses", stats.deleted, percent (stats.deleted, stats.derived));
 }
 
 }

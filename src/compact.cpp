@@ -12,6 +12,7 @@ namespace CaDiCaL {
 
 bool Internal::compacting () {
   if (level) return false;
+  if (bchecker) return false;
   if (!opts.compact) return false;
   if (stats.conflicts < lim.compact) return false;
   int inactive = max_var - active ();

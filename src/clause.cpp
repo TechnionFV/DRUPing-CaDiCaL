@@ -68,77 +68,6 @@ void Internal::mark_added (Clause * c) {
 
 /*------------------------------------------------------------------------*/
 
-///TODO: Try avoid allocation of unit clauses and changing internal structures.
-Clause * Internal::new_unit_clause (int lit, bool red, int glue) {
-
-  const int size = 1;
-  if (glue > size) glue = size;
-
-  // Determine whether this clauses should be kept all the time.
-  //
-  bool keep;
-  if (!red) keep = true;
-  else if (glue <= opts.reducetier1glue) keep = true;
-  else keep = false;
-
-  size_t bytes = Clause::bytes (size);
-  Clause * c = (Clause *) new char[bytes];
-
-  stats.added.total++;
-#ifdef LOGGING
-  c->id = stats.added.total;
-#endif
-
-  c->conditioned = false;
-  c->covered = false;
-  c->enqueued = false;
-  c->frozen = false;
-  c->garbage = false;
-  c->gate = false;
-  c->hyper = false;
-  c->instantiated = false;
-  c->keep = keep;
-  c->moved = false;
-  c->reason = false;
-  c->redundant = red;
-  c->transred = false;
-  c->subsume = false;
-  c->vivified = false;
-  c->vivify = false;
-  c->core = false;
-  c->used = 0;
-
-  c->glue = glue;
-  c->size = size;
-  c->pos = 2;
-
-  c->literals[0] = lit;
-
-  // Just checking that we did not mess up our sophisticated memory layout.
-  // This might be compiler dependent though. Crucial for correctness.
-  //
-  assert (c->bytes () == bytes);
-
-  stats.current.total++;
-  stats.added.total++;
-
-  if (red) {
-    stats.current.redundant++;
-    stats.added.redundant++;
-  } else {
-    stats.irrbytes += bytes;
-    stats.current.irredundant++;
-    stats.added.irredundant++;
-  }
-
-  clauses.push_back (c);
-  LOG (c, "new pointer %p", (void*) c);
-
-  if (likely_to_be_kept_clause (c)) mark_added (c);
-
-  return c;
-}
-
 Clause * Internal::new_clause (bool red, int glue) {
 
   assert (clause.size () <= (size_t) INT_MAX);
@@ -340,7 +269,7 @@ void Internal::mark_garbage (Clause * c) {
   if (proof && c->size != 2)
     proof->delete_clause (c);
 
-  if (bchecker && c->size != 2)
+  if (bchecker && (c->size != 2 || !watching ()))
     bchecker->delete_clause (c);
 
   assert (stats.current.total > 0);

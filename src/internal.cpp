@@ -210,10 +210,10 @@ int Internal::cdcl_loop_with_inprocessing () {
     else if (rephasing ()) rephase ();       // reset variable phases
     else if (reducing ()) reduce ();         // collect useless clauses
     else if (probing ()) probe ();           // failed literal probing
-    // else if (subsuming ()) subsume ();       // subsumption algorithm
-    // else if (eliminating ()) elim ();        // variable elimination
-    // else if (compacting ()) compact ();      // collect variables
-    // else if (conditioning ()) condition ();  // globally blocked clauses
+    else if (subsuming ()) subsume ();       // subsumption algorithm
+    else if (eliminating ()) elim ();        // variable elimination
+    else if (compacting ()) compact ();      // collect variables
+    else if (conditioning ()) condition ();  // globally blocked clauses
     else res = decide ();                    // next decision
   }
 
@@ -598,13 +598,12 @@ int Internal::solve (bool preprocess_only) {
     init_preprocessing_limits ();
     if (!preprocess_only) init_search_limits ();
   }
-  // if (!res) res = preprocess ();
+  if (!res) res = preprocess ();
   if (!preprocess_only) {
     if (!res) res = local_search ();
     if (!res) res = lucky_phases ();
     if (!res) res = cdcl_loop_with_inprocessing ();
   }
-
   reset_solving ();
   report_solving (res);
   STOP (solve);
