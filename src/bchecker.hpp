@@ -17,7 +17,7 @@ class Clause;
 
 class BCheckerClause {
 public:
-  unsigned revive_at;
+  int revive_at;
   bool marked_garbage;
   vector<int> literals;
   BCheckerClause (vector<int> c);
@@ -46,16 +46,13 @@ class BChecker {
   // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
   //
   unordered_map<Clause *, vector<unsigned>> cp_ordering;
-  unordered_map<int, vector<unsigned>> revive_ordering;
 
   vector<int> failing_assumptions;
-
-  void invalidate_counterpart (Clause * c, int i);
-  void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
 
   vector<BCheckerClause *> bchecker_clauses;
   BCheckerClause * insert (Clause *);
   BCheckerClause * insert (const vector<int> &);
+  void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
 
   // If true, include core unit clauses.
   //

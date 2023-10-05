@@ -79,9 +79,10 @@ void BChecker::revive_internal_clause (int i) {
   Clause * c = internal->new_clause (true /* if it was deleted before, this means it's redundant */);
   clause.clear();
   internal->watch_clause (c);
-  assert (c && (revive_ordering[i].empty () || revive_ordering[i].size() == 1));
-  for (int j : revive_ordering[i]) {
-    assert (revive_ordering[j].empty ()); // Are chains even possible?
+  if (bc->revive_at >= 0) {
+    int j = bc->revive_at;
+    assert (j < i);
+    assert (proof[j].first->revive_at < 0);  // Are chains even possible?
     assert (!proof[j].second && !counterparts[j]);
     counterparts[j] = c;
   }
@@ -534,24 +535,9 @@ Clause * BChecker::new_unit_clause (const int lit, bool original) {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::invalidate_counterpart (Clause * c, int i) {
-  assert (c && proof.size() == counterparts.size());
-  vector<unsigned> & indexes = cp_ordering[c];
-  assert (indexes.size() < 2);
-  if (indexes.size ()) stats.counterparts--;
-  for (int j : indexes) {
-    assert (counterparts[j] == c);
-    counterparts[j] = 0;
-  }
-  assert (revive_ordering[i].empty ());
-  revive_ordering[i] = indexes;
-  indexes.clear (); // This address might be user for another clause allocation in the future...
-  assert (cp_ordering[c].empty ());
-  cp_ordering.erase (c);
-}
-
 void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
   assert (deleted || c);
+  assert (bc->revive_at < 0);
   stats.added++;
   if (deleted) stats.deleted++;
   else stats.derived++;
@@ -560,14 +546,12 @@ void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = fal
     auto & indexes = cp_ordering[c];
     if (deleted) {
       if (c) {
-        // assert (indexes.size () == 1); // does not hold with reduce as it might reduce original clauses that have not been added here.
         assert (indexes.size () < 2);
         for (int i : indexes) {
           assert (counterparts[i] == c);
           counterparts[i] = 0;
+          bc->revive_at = i;
         }
-        assert (revive_ordering[proof.size()].empty ());
-        revive_ordering[proof.size()] = indexes;
         indexes.clear (); // This address might be user for another clause allocation in the future...
         assert (cp_ordering[c].empty ());
         cp_ordering.erase (c);
@@ -639,7 +623,6 @@ void BChecker::strengthen_clause (Clause * c, int lit) {
   START (bchecking);
   assert (c && lit);
   LOG (c, "BCHECKER strengthen by removing %d in", lit);
-  invalidate_counterpart (c, proof.size() + 1);
   vector<int> strengthened;
   for (int i = 0; i < c->size; i++) {
     int internal_lit = c->literals[i];
@@ -647,8 +630,23 @@ void BChecker::strengthen_clause (Clause * c, int lit) {
     strengthened.push_back (internal_lit);
   }
   assert (strengthened.size() > 1);
-  append_lemma (insert (strengthened), c);
-  append_lemma (insert (c), 0, true);
+  BCheckerClause * bc_strengthened = insert (strengthened);
+  BCheckerClause * bc_c = insert (c);
+  assert (cp_ordering[c].size () < 2);
+  int revive_at = -1;
+  if (cp_ordering[c].size ()) {
+    revive_at = cp_ordering[c][0];
+    counterparts[revive_at] = 0;
+    stats.counterparts--;
+    cp_ordering[c].clear ();
+  }
+  assert (cp_ordering[c].empty ());
+  append_lemma (bc_strengthened, c);
+  assert (cp_ordering[c].size () == 1);
+  append_lemma (bc_c, 0, true);
+  assert (cp_ordering[c].size () == 1);
+  assert (bc_strengthened->revive_at < 0 && cp_ordering[c].size () == 1);
+  bc_c->revive_at = revive_at;
   STOP (bchecking);
 }
 
@@ -658,7 +656,6 @@ void BChecker::flush_clause (Clause * c) {
   START (bchecking);
   LOG (c, "BCHECKER flushing falsified literals in");
   assert (c);
-  invalidate_counterpart (c, proof.size() + 1);
   vector<int> flushed;
   for (int i = 0; i < c->size; i++) {
     int internal_lit = c->literals[i];
@@ -666,8 +663,21 @@ void BChecker::flush_clause (Clause * c) {
       flushed.push_back (internal_lit);
   }
   assert (flushed.size() > 1);
-  append_lemma (insert (flushed), c);
-  append_lemma (insert (c), 0, true);
+  BCheckerClause * bc_flushed = insert (flushed);
+  BCheckerClause * bc_c = insert (c);
+  assert (cp_ordering[c].size () < 2);
+  int revive_at = -1;
+  if (cp_ordering[c].size ()) {
+    assert (cp_ordering[c].size () == 1);
+    revive_at = cp_ordering[c][0];
+    counterparts[revive_at] = 0;
+    stats.counterparts--;
+    cp_ordering[c].clear ();
+  }
+  append_lemma (bc_flushed, c);
+  append_lemma (bc_c, 0, true);
+  assert (bc_flushed->revive_at < 0 && cp_ordering[c].size () == 1);
+  bc_c->revive_at = revive_at;
   STOP (bchecking);
 }
 
