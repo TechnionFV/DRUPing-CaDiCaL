@@ -211,7 +211,7 @@ int Internal::cdcl_loop_with_inprocessing () {
     else if (reducing ()) reduce ();         // collect useless clauses
     else if (probing ()) probe ();           // failed literal probing
     else if (subsuming ()) subsume ();       // subsumption algorithm
-    // else if (eliminating ()) elim ();        // variable elimination
+    else if (eliminating ()) elim ();        // variable elimination
     else if (compacting ()) compact ();      // collect variables
     else if (conditioning ()) condition ();  // globally blocked clauses
     else res = decide ();                    // next decision

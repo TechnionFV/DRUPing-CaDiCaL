@@ -39,7 +39,6 @@ void Internal::check () {
 
 void Internal::bcheck () {
   assert (!bchecker);
-  new_proof_on_demand ();
   bchecker = new BChecker (this);
 }
 

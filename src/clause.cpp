@@ -260,8 +260,7 @@ void Internal::delete_clause (Clause * c) {
 //
 void Internal::mark_garbage (Clause * c) {
 
-  if (c->size == 1) return;
-  assert (!c->garbage);
+  assert (!c->garbage && c->size > 1);
 
   // Delay tracing deletion of binary clauses.  See the discussion above in
   // 'delete_clause' and also in 'propagate'.
@@ -359,7 +358,7 @@ void Internal::add_new_original_clause () {
     if (proof) proof->delete_clause (original);
   } else {
     size_t size = clause.size ();
-    const bool derived_original = original.size () > size;
+    const bool derived = original.size () > size;
     if (!size) {
       if (!unsat) {
         if (!original.size ()) VERBOSE (1, "found empty original clause");
@@ -370,14 +369,14 @@ void Internal::add_new_original_clause () {
       const int lit = clause[0];
       assign_original_unit (lit);
       if (bchecker)
-        bchecker->add_derived_unit_clause (lit, !derived_original);
+        bchecker->add_derived_unit_clause (lit, !derived);
     } else {
       Clause * c = new_clause (false);
       watch_clause (c);
-      if (bchecker && derived_original)
+      if (bchecker && derived)
         bchecker->add_derived_clause (c);
     }
-    if (derived_original) {
+    if (derived) {
       external->check_learned_clause ();
       if (proof) {
         proof->add_derived_clause (clause);

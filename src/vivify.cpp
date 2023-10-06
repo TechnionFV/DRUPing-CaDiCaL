@@ -921,7 +921,7 @@ void Internal::vivify_round (bool redundant_mode, int64_t propagation_limit) {
   //
   for (const auto & c : clauses) {
 
-    if (c->size <= 2) continue;       // see also (NO-BINARY) above
+    if (c->size == 2) continue;       // see also (NO-BINARY) above
 
     if (!consider_to_vivify_clause (c, redundant_mode)) continue;
 
