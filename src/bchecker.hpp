@@ -23,6 +23,9 @@ public:
   BCheckerClause (vector<int> c);
   BCheckerClause (Clause * c);
   ~BCheckerClause () = default;
+  bool unit () const {
+    return literals.size () == 1;
+  }
 };
 
 class BChecker {
@@ -69,12 +72,16 @@ class BChecker {
   bool is_on_trail (Clause *);
 
   void mark_core (Clause *);
-  void mark_last_conflict (bool);
+
+  void mark_conflict_lit (int l);
+  void mark_conflict (bool overconstarined);
 
   void shrink_internal_trail (const unsigned);
-  void clear ();
+  void clear_conflict ();
 
   void check_environment ();
+
+  void dump_proof ();
 
   bool validate_lemma (Clause *);
   void conflict_analysis_core ();

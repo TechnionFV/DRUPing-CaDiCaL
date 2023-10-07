@@ -385,7 +385,12 @@ void Internal::add_new_original_clause () {
       if (bchecker)
         bchecker->delete_clause (original, true);
     }
-    // if (!size && bchecker) bchecker->validate (true /* overconstrained */);
+    if (bchecker && !size && original.size ()) {
+        if (!derived)
+          bchecker->delete_clause (original, true);
+        bchecker->validate (true /* overcontrained */);
+      ///TODO: Validate in case of empty original?
+    }
   }
   clause.clear ();
 }

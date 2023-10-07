@@ -219,7 +219,7 @@ int Internal::cdcl_loop_with_inprocessing () {
 
   if (res == 20 && bchecker) {
     assert (!opts.chrono && opts.bcheck);
-    printf ("Basel: validating: %d\n", bchecker->validate ());
+    bchecker->validate ();
   }
 
   if (stable) { STOP (stable);   report (']'); }
