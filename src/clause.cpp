@@ -389,7 +389,6 @@ void Internal::add_new_original_clause () {
         if (!derived)
           bchecker->delete_clause (original, true);
         bchecker->validate (true /* overcontrained */);
-      ///TODO: Validate in case of empty original?
     }
   }
   clause.clear ();

@@ -207,7 +207,7 @@ void BChecker::mark_conflict (bool overconstrained) {
       // Last deleted lemma is the falsified original.
       // Revive it and mark it as the conflict clause.
       int i = proof.size () - 1;
-      assert (proof[i].second);
+      assert (i >= 0 && proof[i].second);
       BCheckerClause * bc = proof[i].first;
       if (bc->unit ()) counterparts[i] = new_unit_clause (proof[i].first->literals[0], true);
       else revive_internal_clause (i);
@@ -422,12 +422,12 @@ bool BChecker::validate (bool overconstrained) {
 
   assert (!validating);
   assert (internal->unsat || !internal->marked_failed);
+  save_scope save_unsat (internal->unsat);
 
 #ifndef NDEBUG
     check_environment ();
 #endif
 
-  save_scope save_unsat (internal->unsat);
   if (!internal->marked_failed) {
     internal->failing ();
     internal->marked_failed = true;
