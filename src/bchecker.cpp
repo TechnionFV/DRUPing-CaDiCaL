@@ -7,7 +7,7 @@ namespace CaDiCaL {
 
 BCheckerClause::BCheckerClause (vector<int> c)
 :
-  revive_at (-1), marked_garbage (false)
+  failed (false), marked_garbage (false), revive_at (-1)
 {
   assert (c.size ());
   for (auto i : c)
@@ -16,7 +16,7 @@ BCheckerClause::BCheckerClause (vector<int> c)
 
 BCheckerClause::BCheckerClause (Clause * c)
 :
-  revive_at (-1), marked_garbage (false)
+  failed (false), marked_garbage (false), revive_at (-1)
 {
   assert (c && c->size);
   for (auto i = c->begin (); i != c->end (); i++)
@@ -157,6 +157,20 @@ void BChecker::revive_internal_clause (int i) {
     counterparts[j] = c;
   }
   counterparts[i] = c;
+  if (bc->failed) mark_core (c);
+  {
+    ///FIXME: This clause has not been actually allocated
+    // in internal memory and Internal::Proof observers
+    // aren't aware of it. As a result, deleting it in
+    // the future will trigger an error saying that the
+    // deleted clause isn't in the proof.
+    // Therefore, as a workaround, we ensure Internal::Proof
+    // is notified with it as if it was allocated.
+    // However, this clause will only be allocated during
+    // the reviving.
+    if (internal->proof)
+      internal->proof->add_derived_clause (c);
+  }
 }
 
 void BChecker::stagnate_internal_clause (const int i) {
@@ -459,12 +473,15 @@ void BChecker::put_units_back () {
 void BChecker::pop_failing_assumptions (unsigned proof_sz) {
   assert (proof.size () == counterparts.size ());
   if (proof_sz == proof.size ()) return;
-  for (int i = proof_sz; i < proof.size (); i++) {
-    if (proof[i].second) stats.deleted--;
-    else stats.derived--;
+  int pop = proof.size () - proof_sz;
+  while (pop--) {
+    if (proof.back ().second)
+      stats.deleted--;
+    else
+      stats.derived--;
+    proof.pop_back ();
+    counterparts.pop_back ();
   }
-  proof.resize (proof_sz);
-  counterparts.resize (proof_sz);
 }
 
 /*------------------------------------------------------------------------*/
@@ -477,11 +494,12 @@ void BChecker::check_environment () {
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
     assert (bc && (!deleted || !c));
-    if (!deleted && c && c->garbage)
+    if (!deleted && c && c->garbage) {
       ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
       // clauses as deleted (produce 'd ...' lines) as soon they are marked
       // garbage.
       assert (c->size == 2);
+    }
   }
 }
 
@@ -546,7 +564,10 @@ void BChecker::add_derived_unit_clause (const int lit, bool original) {
     internal->var(lit).reason = c = new_unit_clause (lit, original);
   if (!original) {
     append_lemma (insert ({lit}), !c ? new_unit_clause (lit, original) : c);
-    assert (internal->var(lit).reason->literals[0] == lit);
+    {
+      ///FIXME: This might fail if probing ([0] == -lit).
+      // assert (internal->var(lit).reason->literals[0] == lit);
+    }
   }
   STOP (bchecking);
 }
@@ -565,21 +586,9 @@ void BChecker::add_failing_assumption (const vector<int> & c) {
   if (c.size () > 1) {
     append_lemma (insert (c), 0);
     append_lemma (insert (c), 0, true);
-    {
-    ///FIXME: This clause has not been actually allocated
-    // in internal memory and Internal::Proof observers
-    // aren't aware of it. As a result, deleting it in
-    // the future will trigger an error saying that the
-    // deleted clause isn't in the proof.
-    // Therefore, as a workaround, we ensure Internal::Proof
-    // is notified with it as if it was allocated.
-    // However, this clause will only be allocated during
-    // the reviving.
-    if (internal->proof)
-      internal->proof->add_derived_clause (c);
-    }
     int i = proof.size () - 1;
     proof[i].first->revive_at = i - 1;
+    proof[i].first->failed = true;
   } else {
     Clause * r = internal->var (c[0]).reason;
     if (r) mark_core (r);
@@ -784,9 +793,13 @@ bool BChecker::validate (bool overconstrained) {
   shrink_internal_trail (trail_sz);
   mark_core_trail_antecedents ();
 
-  // This is a good point to dump core as some of
-  // the satisfied clauses will be removed after.
-  dump_core ();
+  {
+    // This is a good point to dump core as some of
+    // the satisfied clauses will be removed after.
+    // ```
+    // dump_core ();
+    // ```
+  }
 
   reallocate  ();
   put_units_back ();

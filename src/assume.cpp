@@ -183,13 +183,14 @@ void Internal::failing () {
         bchecker->add_failing_assumption (clause);
     } else {
       for (auto lit : constraint) {
-        assert (0 && "notify bchecker");
         clause.push_back(-lit);
         external->check_learned_clause ();
         if (proof) {
           proof->add_derived_clause(clause);
           proof->delete_clause(clause);
         }
+        if (bchecker)
+          bchecker->add_failing_assumption (clause);
         clause.pop_back();
       }
     }

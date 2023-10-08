@@ -17,6 +17,7 @@ class Clause;
 
 class BCheckerClause {
 public:
+  bool failed;
   int revive_at;
   bool marked_garbage;
   vector<int> literals;
