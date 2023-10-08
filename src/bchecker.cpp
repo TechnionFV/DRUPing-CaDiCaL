@@ -440,25 +440,35 @@ void BChecker::reallocate () {
   assert (!isolate);
   lock_scope isolated (isolate);
   assert (proof.size() == counterparts.size ());
-  for (unsigned i = 0; i < proof.size (); i++) {
+    for (unsigned i = 0; i < proof.size (); i++) {
     BCheckerClause * bc = proof[i].first;
     bool deleted = proof[i].second;
     Clause * c = counterparts[i];
-    if (deleted) {
-      assert (c && !c->garbage);
-      counterparts[i] = 0;
-      if (bc->unit ()) continue;
-      internal->unwatch_clause (c);
-      internal->mark_garbage (c);
-    } else {
+    if (!deleted) {
       assert (c);
+      assert (bc->revive_at < 0);
       if (bc->marked_garbage) {
         bc->marked_garbage = c->garbage = false;
         internal->watch_clause (c);
       }
     }
   }
-  internal->garbage_collection ();
+
+  for (int i = proof.size () - 1; i >= 0; i--) {
+    BCheckerClause * bc = proof[i].first;
+    bool deleted = proof[i].second;
+    Clause * c = counterparts[i];
+    if (deleted) {
+      assert (c && !c->garbage);
+      counterparts[i] = 0;
+      if (bc->revive_at >= 0)
+        counterparts[bc->revive_at] = 0;
+      if (bc->unit ()) continue;
+      internal->unwatch_clause (c);
+      internal->mark_garbage (c);
+    }
+  }
+  // internal->garbage_collection ();
 }
 
 void BChecker::put_units_back () {
@@ -506,14 +516,17 @@ void BChecker::check_environment () {
 void BChecker::dump_proof () {
   printf ("DUMP PROOF START\n");
   for (int i = proof.size () - 1; i >= 0; i--) {
-    printf ("%s: ", proof[i].second ? "deleted" : "       ");
+    printf ("(%d) %s: ", i, proof[i].second ? "deleted" : "       ");
     auto & lits = proof[i].first->literals;
     for (int l : lits)
       printf ("%d ", l);
     Clause * c = counterparts[i];
     printf ("c: ");
     if (!c) printf ("0 ");
-    else for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+    else {
+      for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+      printf ("%s", c->garbage ? "(garbage)" : "");
+    }
     printf ("\n");
   }
   printf ("DUMP PROOF END\n");
