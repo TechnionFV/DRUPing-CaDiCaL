@@ -91,7 +91,6 @@ Clause * BChecker::new_unit_clause (const int lit, bool original) {
 /*------------------------------------------------------------------------*/
 
 BCheckerClause * BChecker::insert (Clause * c) {
-  stats.insertions++;
   vector<int> lits;
   for (int  i = 0; i < c->size; i++)
     lits.push_back (c->literals[i]);
@@ -101,7 +100,6 @@ BCheckerClause * BChecker::insert (Clause * c) {
 }
 
 BCheckerClause * BChecker::insert (const vector<int> & lits) {
-  stats.insertions++;
   BCheckerClause * bc = new BCheckerClause (lits);
   bchecker_clauses.push_back (bc);
   return bc;
@@ -113,7 +111,6 @@ BCheckerClause * BChecker::insert (const vector<int> & lits) {
 // clause is discarded from memory.
 void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
   assert (bc->revive_at < 0);
-  stats.added++;
   if (deleted) stats.deleted++;
   else stats.derived++;
   if (c) {
@@ -271,6 +268,7 @@ bool BChecker::is_on_trail (Clause * c) {
 
 void BChecker::mark_core (Clause * c) {
   assert (c);
+  if (!c->core) stats.core++;
   c->core = true;
 }
 

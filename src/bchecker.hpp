@@ -106,15 +106,11 @@ class BChecker {
 
   struct {
 
-    int64_t added;              // number of added clauses
     int64_t derived;            // number of added derived clauses
-    int64_t counterparts;       // number of added counterpart references
-
     int64_t deleted;            // number of deleted clauses
-
-    int64_t insertions;         // number of clauses added to hash table
-
-    int64_t units;              // number of searched clauses in 'find'
+    int64_t counterparts;       // number of counterpart references
+    int64_t units;              // number of unit clauses allcoated
+    int64_t core;               // number of unit clauses allcoated
 
   } stats;
 

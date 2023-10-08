@@ -308,15 +308,17 @@ void Checker::print_stats () {
 
 void BChecker::print_stats () {
 
-  if (!stats.added && !stats.deleted) return;
+  if (!stats.deleted && !stats.deleted) return;
 
   SECTION ("bchecker statistics");
 
-  MSG ("derived:         %15" PRId64 "   %10.2f %%  of all clauses", stats.derived, percent (stats.derived, stats.added));
-  MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all derived clauses", stats.counterparts, percent (stats.counterparts, stats.derived));
-  MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all derived clauses", stats.deleted, percent (stats.deleted, stats.derived));
-  MSG ("insertions:      %15" PRId64 "   %10.2f %%  of all clauses", stats.insertions, percent (stats.insertions, stats.added));
-  MSG ("units:           %15" PRId64 "   %10.2f %%  of all derived clauses", stats.deleted, percent (stats.deleted, stats.derived));
+  auto all = stats.deleted + stats.derived;
+
+  MSG ("derived:         %15" PRId64 "   %10.2f %%  of all clauses", stats.derived, percent (stats.derived, all));
+  MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.deleted, all));
+  MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all clauses", stats.counterparts, percent (stats.counterparts, all));
+  MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.units, all));
+  MSG ("core:            %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.core, all));
 }
 
 }
