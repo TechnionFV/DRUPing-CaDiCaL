@@ -48,6 +48,48 @@ BChecker::~BChecker () {
 
 /*------------------------------------------------------------------------*/
 
+Clause * BChecker::new_unit_clause (const int lit, bool original) {
+
+  const int size = 1;
+
+  size_t bytes = Clause::bytes (size);
+  Clause * c = (Clause *) new char[bytes];
+
+  stats.units++;
+
+  c->conditioned = false;
+  c->covered = false;
+  c->enqueued = false;
+  c->frozen = false;
+  c->garbage = false;
+  c->gate = false;
+  c->hyper = false;
+  c->instantiated = false;
+  c->keep = true;
+  c->moved = false;
+  c->reason = false;
+  ///NOTE: for clauses of size 1, irredundant iff original.
+  c->redundant = !original;
+  c->transred = false;
+  c->subsume = false;
+  c->vivified = false;
+  c->vivify = false;
+  c->core = false;
+  c->used = c->glue = 0;
+  c->size = size;
+  c->pos = 2;
+  c->literals[0] = lit;
+
+  assert (c->bytes () == bytes);
+
+  unit_clauses.push_back (c);
+  LOG (c, "new pointer %p", (void*) c);
+
+  return c;
+}
+
+/*------------------------------------------------------------------------*/
+
 BCheckerClause * BChecker::insert (Clause * c) {
   stats.insertions++;
   vector<int> lits;
@@ -65,13 +107,44 @@ BCheckerClause * BChecker::insert (const vector<int> & lits) {
   return bc;
 }
 
+/*------------------------------------------------------------------------*/
+
+///TODO: Consider using lazy bchecker clause allocation: allocate once the internal
+// clause is discarded from memory.
+void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
+  assert (bc->revive_at < 0);
+  stats.added++;
+  if (deleted) stats.deleted++;
+  else stats.derived++;
+  if (c) {
+    auto & indexes = cp_ordering[c];
+    if (deleted) {
+      if (c) {
+        assert (indexes.size () < 2);
+        for (int i : indexes) {
+          assert (counterparts[i] == c);
+          counterparts[i] = 0;
+          bc->revive_at = i;
+        }
+        indexes.clear ();
+        assert (cp_ordering[c].empty ());
+        cp_ordering.erase (c);
+      }
+    } else {
+      indexes.push_back (proof.size());
+      assert (indexes.size() == 1);
+      stats.counterparts++;
+    }
+  }
+  proof.push_back ({bc, deleted});
+  counterparts.push_back (deleted ? 0 : c);
+  assert (proof.size() == counterparts.size());
+}
+
 void BChecker::revive_internal_clause (int i) {
   assert (!counterparts[i] && proof[i].second);
   BCheckerClause * bc = proof[i].first;
   assert (!bc->unit ());
-  ///NOTE: Unit clauses should not be deleted.
-  // The motivation behind allocating unit clauses is to simplify the code.
-  ///TODO: set eliminated flag to false if there are eliminated vars.
   vector<int> & clause = internal->clause;
   assert (clause.empty());
   for (int j : bc->literals)
@@ -93,30 +166,18 @@ void BChecker::stagnate_internal_clause (const int i) {
   assert (proof.size() == counterparts.size());
   Clause * c = counterparts[i];
   if (c->size == 1) return;
+  internal->unwatch_clause (c);
   {
-    ///BUG: Some clauses seem to be marked as garbage and unwatched.
-    // Others are marked as garbage but still watched?
-    ///TODO:figure out what is happens with binary clauses.
-    internal->unwatch_clause (c);
+    // See the discussion in 'propagate' on avoiding to eagerly trace binary
+    // clauses as deleted (produce 'd ...' lines) as soon they are marked
+    // garbage.
+    assert (!c->garbage || c->size == 2);
+    if (!c->garbage) {
+      assert (!c->moved);
+      c->garbage = true;
+      proof[i].first->marked_garbage = true;
+    }
   }
-  ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
-  // clauses as deleted (produce 'd ...' lines) as soon they are marked
-  // garbage.
-  assert (!c->garbage || c->size == 2);
-  if (!c->garbage) {
-    assert (!c->moved);
-    c->garbage = true;
-    proof[i].first->marked_garbage = true;
-  }
-}
-
-void BChecker::shrink_internal_trail (const unsigned trail_sz) {
-  assert (trail_sz <= internal->trail.size());
-  internal->trail.resize(trail_sz);
-  internal->propagated = trail_sz;
-  ///TODO: set internal->propagated2 properly.
-  assert (!internal->level);
-  assert(internal->control.size () == 1);
 }
 
 ///NOTE: The internal solver does not support reactivation
@@ -134,6 +195,25 @@ void BChecker::reactivate_fixed (int l) {
   internal->stats.inactive--;
   internal->stats.active++;
 }
+
+/*------------------------------------------------------------------------*/
+
+void BChecker::shrink_internal_trail (const unsigned trail_sz) {
+  assert (trail_sz <= internal->trail.size());
+  internal->trail.resize(trail_sz);
+  internal->propagated = trail_sz;
+  ///TODO: set internal->propagated2 properly.
+  assert (!internal->level);
+  assert(internal->control.size () == 1);
+}
+
+void BChecker::clear_conflict () {
+  internal->unsat = false;
+  internal->backtrack();
+  internal->conflict = 0;
+}
+
+/*------------------------------------------------------------------------*/
 
 void BChecker::undo_trail_literal (int lit) {
   assert (internal->val (lit) > 0);
@@ -187,6 +267,8 @@ bool BChecker::is_on_trail (Clause * c) {
   return internal->val (lit) > 0 && internal->var (lit).reason == c;
 }
 
+/*------------------------------------------------------------------------*/
+
 void BChecker::mark_core (Clause * c) {
   assert (c);
   c->core = true;
@@ -219,10 +301,45 @@ void BChecker::mark_conflict (bool overconstrained) {
     mark_core (conflict);
     for (int i = 0; i < conflict->size; i++)
       mark_conflict_lit (conflict->literals[i]);
-  } else {
-    assert (failing_assumptions.size () && internal->marked_failed);
   }
 }
+
+/*------------------------------------------------------------------------*/
+
+void BChecker::assume_negation (const Clause * lemma) {
+  assert (validating && !internal->level);
+  assert (lemma && lemma->core);
+  assert (internal->propagated == internal->trail.size ());
+
+  vector <int> decisions;
+  for (int i = 0; i < lemma->size; i++) {
+    int lit = lemma->literals[i];
+    if (!internal->val (lit))
+      decisions.push_back (-lit);
+  }
+
+  assert (decisions.size());
+  internal->search_assume_multiple_decisions (decisions);
+  assert (internal->level  == int (decisions.size()));
+}
+
+bool BChecker::propagate_conflict () {
+  assert(!internal->conflict);
+  if (internal->propagate ())
+  {
+    // If propagate fails, it may be due to incrementality and
+    // missing units. re-propagate the entire trail.
+    ///TODO: Understand what exactly happens and why is this needed.
+    // A good point to start: test/trace/reg0048.trace.
+    internal->propagated = 0;
+    if (internal->propagate ()) {
+      internal->backtrack ();
+      return false;
+    }
+  }
+  return true;
+}
+
 
 void BChecker::conflict_analysis_core () {
 
@@ -290,48 +407,7 @@ void BChecker::conflict_analysis_core () {
   assert (seen.empty ());
 }
 
-bool BChecker::validate_lemma (Clause * lemma) {
-  assert (validating);
-  assert (!internal->level);
-  assert (lemma && lemma->core);
-  assert (internal->propagated == internal->trail.size ());
-
-  vector <int> decisions;
-  for (int i = 0; i < lemma->size; i++) {
-    int lit = lemma->literals[i];
-    if (!internal->val (lit))
-      decisions.push_back (-lit);
-  }
-
-  assert (decisions.size());
-  internal->search_assume_multiple_decisions (decisions);
-  assert (internal->level  == int (decisions.size()));
-
-
-  ///TODO: is this really needed? drop this...
-  for (int i = 0; i < lemma->size; i++)
-    if (!internal->var(lemma->literals[i]).level && internal->val(lemma->literals[i]))
-      mark_core (internal->var(lemma->literals[i]).reason);
-
-  assert(!internal->conflict);
-  if (internal->propagate ())
-  {
-    // If propagate fails, it may be due to incrementality and
-    // missing units. re-propagate the entire trail.
-    ///TODO: Understand what exactly happens and why is this needed.
-    // A good point to start: test/trace/reg0048.trace.
-    internal->propagated = 0;
-    if (internal->propagate ()) {
-      internal->backtrack ();
-      return false;
-    }
-  }
-
-  conflict_analysis_core ();
-
-  clear_conflict ();
-  return true;
-}
+/*------------------------------------------------------------------------*/
 
 void BChecker::mark_core_trail_antecedents () {
   for (int i = internal->trail.size() - 1; i >= 0; i--) {
@@ -382,6 +458,19 @@ void BChecker::put_units_back () {
   }
 }
 
+void BChecker::pop_failing_assumptions (unsigned proof_sz) {
+  assert (proof.size () == counterparts.size ());
+  if (proof_sz == proof.size ()) return;
+  for (int i = proof_sz; i < proof.size (); i++) {
+    if (proof[i].second) stats.deleted--;
+    else stats.derived--;
+  }
+  proof.resize (proof_sz);
+  counterparts.resize (proof_sz);
+}
+
+/*------------------------------------------------------------------------*/
+
 void BChecker::check_environment () {
   assert (proof.size() == counterparts.size());
   assert (proof.size() == unsigned(stats.derived + stats.deleted));
@@ -398,13 +487,8 @@ void BChecker::check_environment () {
   }
 }
 
-void BChecker::clear_conflict () {
-  internal->unsat = false;
-  internal->backtrack();
-  internal->conflict = 0;
-}
-
 void BChecker::dump_proof () {
+  printf ("DUMP PROOF START\n");
   for (int i = proof.size () - 1; i >= 0; i--) {
     printf ("%s: ", proof[i].second ? "deleted" : "       ");
     auto & lits = proof[i].first->literals;
@@ -416,75 +500,8 @@ void BChecker::dump_proof () {
     else for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
     printf ("\n");
   }
+  printf ("DUMP PROOF END\n");
 }
-
-bool BChecker::validate (bool overconstrained) {
-
-  assert (!validating);
-  assert (internal->unsat || !internal->marked_failed);
-  save_scope save_unsat (internal->unsat);
-
-#ifndef NDEBUG
-    check_environment ();
-#endif
-
-  if (!internal->marked_failed) {
-    internal->failing ();
-    internal->marked_failed = true;
-  }
-
-  START (bchecking);
-  LOG ("BCHECKER starting validation");
-  lock_scope validation_scope (validating);
-
-  mark_conflict (overconstrained);
-  clear_conflict ();
-  unsigned trail_sz = internal->trail.size();
-
-  for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
-
-    bool deleted = proof[i].second;
-    Clause * c = counterparts[i];
-
-    assert (!deleted || !c);
-
-    if (deleted) {
-      revive_internal_clause (i);
-      continue;
-    }
-
-    assert (c && (c->size == 2 || !c->garbage));
-
-    if (is_on_trail (c)) {
-      if (core_units) mark_core (c);
-      undo_trail_core (c, trail_sz);
-    }
-
-    stagnate_internal_clause (i);
-
-    if (c->core) {
-      shrink_internal_trail (trail_sz);
-      bool lemma_validated = validate_lemma (c);
-      assert (lemma_validated);
-    }
-  }
-
-  shrink_internal_trail (trail_sz);
-  mark_core_trail_antecedents ();
-
-  // This is a good point to dump core as some of
-  // the satisfied clauses will be removed after.
-  dump_core ();
-
-  reallocate  ();
-  put_units_back ();
-  failing_assumptions.clear ();
-
-  STOP (bchecking);
-  return true;
-}
-
-/*------------------------------------------------------------------------*/
 
 void BChecker::dump_core () {
   printf ("DUMP CORE START\n");
@@ -502,93 +519,10 @@ void BChecker::dump_core () {
       printf ("\n");
     }
   }
-  if (failing_assumptions.size ()) {
-    for (int l : failing_assumptions)
-      printf ("%d ", l);
-    printf ("\n");
-    if (failing_assumptions.size () > 1)
-      for (int l : internal->assumptions)
-        if (internal->failed (l))
-          printf ("%d \n", l);
-  }
+  for (int l : internal->assumptions)
+    if (internal->failed (l))
+      printf ("%d \n", l);
   printf ("DUMP CORE END\n");
-}
-
-/*------------------------------------------------------------------------*/
-
-Clause * BChecker::new_unit_clause (const int lit, bool original) {
-
-  const int size = 1;
-
-  size_t bytes = Clause::bytes (size);
-  Clause * c = (Clause *) new char[bytes];
-
-  stats.units++;
-
-  c->conditioned = false;
-  c->covered = false;
-  c->enqueued = false;
-  c->frozen = false;
-  c->garbage = false;
-  c->gate = false;
-  c->hyper = false;
-  c->instantiated = false;
-  c->keep = true;
-  c->moved = false;
-  c->reason = false;
-  ///NOTE: for clauses of size 1, irredundant iff original.
-  c->redundant = !original;
-  c->transred = false;
-  c->subsume = false;
-  c->vivified = false;
-  c->vivify = false;
-  c->core = false;
-  c->used = c->glue = 0;
-  c->size = size;
-  c->pos = 2;
-  c->literals[0] = lit;
-
-  assert (c->bytes () == bytes);
-
-  unit_clauses.push_back (c);
-  LOG (c, "new pointer %p", (void*) c);
-
-  return c;
-}
-
-/*------------------------------------------------------------------------*/
-
-///TODO: Consider using lazy bchecker clause allocation: allocate once the internal
-// clause is discarded from memory.
-void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
-  assert (deleted || c);
-  assert (bc->revive_at < 0);
-  stats.added++;
-  if (deleted) stats.deleted++;
-  else stats.derived++;
-  if (c) {
-    auto & indexes = cp_ordering[c];
-    if (deleted) {
-      if (c) {
-        assert (indexes.size () < 2);
-        for (int i : indexes) {
-          assert (counterparts[i] == c);
-          counterparts[i] = 0;
-          bc->revive_at = i;
-        }
-        indexes.clear (); // This address might be user for another clause allocation in the future...
-        assert (cp_ordering[c].empty ());
-        cp_ordering.erase (c);
-      }
-    } else {
-      indexes.push_back (proof.size());
-      assert (indexes.size() == 1);
-      stats.counterparts++;
-    }
-  }
-  proof.push_back ({bc, deleted});
-  counterparts.push_back (deleted ? 0 : c);
-  assert (proof.size() == counterparts.size());
 }
 
 /*------------------------------------------------------------------------*/
@@ -627,14 +561,29 @@ void BChecker::add_derived_empty_clause () {
   STOP (bchecking);
 }
 
-void BChecker::add_failed_assumptions (const vector<int> & c) {
-  ///TODO: Allocate this clause and mark it as core.
+void BChecker::add_failing_assumption (const vector<int> & c) {
   if (isolate) return;
   assert (!validating);
-  assert (failing_assumptions.empty ());
-  failing_assumptions = c;
-  for (int failed : failing_assumptions) {
-    Clause * r = internal->var (failed).reason;
+  if (c.size () > 1) {
+    append_lemma (insert (c), 0);
+    append_lemma (insert (c), 0, true);
+    {
+    ///FIXME: This clause has not been actually allocated
+    // in internal memory and Internal::Proof observers
+    // aren't aware of it. As a result, deleting it in
+    // the future will trigger an error saying that the
+    // deleted clause isn't in the proof.
+    // Therefore, as a workaround, we ensure Internal::Proof
+    // is notified with it as if it was allocated.
+    // However, this clause will only be allocated during
+    // the reviving.
+    if (internal->proof)
+      internal->proof->add_derived_clause (c);
+    }
+    int i = proof.size () - 1;
+    proof[i].first->revive_at = i - 1;
+  } else {
+    Clause * r = internal->var (c[0]).reason;
     if (r) mark_core (r);
   }
 }
@@ -735,9 +684,6 @@ void BChecker::delete_clause (const vector<int> & c, bool original) {
 }
 
 void BChecker::delete_clause (Clause * c) {
-  ///TODO: Need to handle incrementality. The bchecker should be aware of
-  // clauses that were deleted during the trimming/validation process. especially
-  // the garbage clauses of size == 2 ??.
   if (isolate) return;
   assert (!validating);
   START (bchecking);
@@ -775,6 +721,81 @@ void BChecker::update_moved_counterparts () {
     counterparts[i] = c->copy;
   }
   STOP (bchecking);
+}
+
+/*------------------------------------------------------------------------*/
+
+bool BChecker::validate (bool overconstrained) {
+
+  assert (!validating);
+  assert (internal->unsat || !internal->marked_failed);
+  save_scope save_unsat (internal->unsat);
+
+#ifndef NDEBUG
+    check_environment ();
+#endif
+
+  START (bchecking);
+  LOG ("BCHECKER starting validation");
+
+  unsigned proof_sz = proof.size ();
+  if (internal->unsat)
+    mark_conflict (overconstrained);
+  else {
+    assert (!internal->marked_failed);
+    // New lemmas could be added to the proof.
+    internal->failing ();
+    internal->marked_failed = true;
+  }
+
+  clear_conflict ();
+  unsigned trail_sz = internal->trail.size();
+  lock_scope validation_scope (validating);
+
+  for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
+
+    bool deleted = proof[i].second;
+    Clause * c = counterparts[i];
+
+    assert (!deleted || !c);
+
+    if (deleted) {
+      revive_internal_clause (i);
+      continue;
+    }
+
+    assert (c && (c->size == 2 || !c->garbage));
+
+    if (is_on_trail (c)) {
+      if (core_units) mark_core (c);
+      undo_trail_core (c, trail_sz);
+    }
+
+    stagnate_internal_clause (i);
+
+    if (c->core) {
+      shrink_internal_trail (trail_sz);
+      assume_negation (c);
+      bool validated = propagate_conflict ();
+      assert (validated);
+      conflict_analysis_core ();
+      clear_conflict ();
+    }
+  }
+
+  shrink_internal_trail (trail_sz);
+  mark_core_trail_antecedents ();
+
+  // This is a good point to dump core as some of
+  // the satisfied clauses will be removed after.
+  dump_core ();
+
+  reallocate  ();
+  put_units_back ();
+  pop_failing_assumptions (proof_sz);
+
+  STOP (bchecking);
+  return true;
 }
 
 }

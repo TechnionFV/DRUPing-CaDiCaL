@@ -36,7 +36,7 @@ class BChecker {
   //
   vector<pair<BCheckerClause*, bool>> proof;
 
-  // stack of clausal proof counterparts accordingly
+  // stack of clausal proof internal counterparts accordingly
   //
   vector<Clause*> counterparts;
 
@@ -45,52 +45,51 @@ class BChecker {
   vector<Clause *> unit_clauses;
   Clause * new_unit_clause (const int lit, bool original);
 
-
-  // for each counterpart 'cp', 'cp_ordering[cp]' contains all matching stack indexes
+  // for each counterpart 'cp', 'cp_ordering[cp]' contains matching stack index
   //
   unordered_map<Clause *, vector<unsigned>> cp_ordering;
 
-  vector<int> failing_assumptions;
+  bool core_units;
+  bool isolate;
+  bool validating;
 
   vector<BCheckerClause *> bchecker_clauses;
   BCheckerClause * insert (Clause *);
   BCheckerClause * insert (const vector<int> &);
+
   void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
-
-  // If true, include core unit clauses.
-  //
-  bool core_units;
-
   void revive_internal_clause (int);
   void stagnate_internal_clause (const int);
   void reactivate_fixed (int);
 
-  // popping all trail literals up to and including the literal whose antecedent is 'c'.
-  //
-  void undo_trail_core (Clause * c, unsigned & trail_sz);
-  void undo_trail_literal (int);
-  bool is_on_trail (Clause *);
-
-  void mark_core (Clause *);
-
-  void mark_conflict_lit (int l);
-  void mark_conflict (bool overconstarined);
-
   void shrink_internal_trail (const unsigned);
   void clear_conflict ();
 
-  void check_environment ();
+  // popping all trail literals up to and including the literal whose antecedent is 'c'.
+  //
+  void undo_trail_literal (int);
+  void undo_trail_core (Clause * c, unsigned & trail_sz);
+  bool is_on_trail (Clause *);
 
-  void dump_proof ();
+  void mark_core (Clause *);
+  void mark_conflict_lit (int l);
+  void mark_conflict (bool overconstarined);
 
-  bool validate_lemma (Clause *);
+  void assume_negation (const Clause *);
+  bool propagate_conflict ();
   void conflict_analysis_core ();
 
-  void put_units_back ();
   void mark_core_trail_antecedents ();
   void reallocate ();
+  void put_units_back ();
+  void pop_failing_assumptions (unsigned);
 
-  bool isolate;
+
+  // debugging only
+  //
+  void check_environment ();
+  void dump_proof ();
+  void dump_core ();
 
   struct lock_scope {
     bool & key;
@@ -128,7 +127,7 @@ public:
   void add_derived_unit_clause (const int, bool original = false);
   void add_derived_empty_clause ();
 
-  void add_failed_assumptions (const vector<int> &);
+  void add_failing_assumption (const vector<int> &);
 
   void strengthen_clause (Clause * c, int lit);
   void flush_clause (Clause *);
@@ -138,10 +137,7 @@ public:
 
   void update_moved_counterparts ();
 
-  bool validating;
   bool validate (bool overconstrained = false);
-
-  void dump_core ();
 
   void print_stats ();
 };

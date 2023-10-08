@@ -83,7 +83,7 @@ void Internal::failing () {
       assert (failed == failed_unit);
       LOG ("root-level falsified assumption %d", failed);
       if (bchecker)
-        bchecker->add_failed_assumptions ({failed});
+        bchecker->add_failing_assumption ({failed});
       goto DONE;
     }
 
@@ -96,7 +96,7 @@ void Internal::failing () {
       assert (!(f.failed & bit));
       f.failed |= bit;
       if (bchecker)
-        bchecker->add_failed_assumptions ({failed});
+        bchecker->add_failing_assumption ({failed});
       goto DONE;
     }
 
@@ -180,7 +180,7 @@ void Internal::failing () {
         proof->delete_clause(clause);
       }
       if (bchecker)
-        bchecker->add_failed_assumptions (clause);
+        bchecker->add_failing_assumption (clause);
     } else {
       for (auto lit : constraint) {
         assert (0 && "notify bchecker");
