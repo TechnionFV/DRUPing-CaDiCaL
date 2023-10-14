@@ -82,14 +82,16 @@ class BChecker {
 
   void mark_core_trail_antecedents ();
   void reallocate ();
-  void put_units_back ();
+  void restore_trail ();
   void pop_failing_assumptions (unsigned);
-
 
   // debugging only
   //
   void check_environment ();
+  void dump_clauses ();
+  void dump_clause (Clause *);
   void dump_proof ();
+  void dump_trail ();
   void dump_core ();
 
   struct lock_scope {

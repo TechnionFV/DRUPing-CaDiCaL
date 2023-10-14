@@ -303,8 +303,10 @@ void BChecker::mark_conflict (bool overconstrained) {
       int i = proof.size () - 1;
       assert (i >= 0 && proof[i].second);
       BCheckerClause * bc = proof[i].first;
-      if (bc->unit ()) counterparts[i] = new_unit_clause (proof[i].first->literals[0], true);
-      else revive_internal_clause (i);
+      if (bc->unit ())
+        counterparts[i] = new_unit_clause (bc->literals[0], false);
+      else
+        revive_internal_clause (i);
       conflict = counterparts[i];
     } else {
       conflict = internal->conflict;
@@ -471,8 +473,10 @@ void BChecker::reallocate () {
   // internal->garbage_collection ();
 }
 
-void BChecker::put_units_back () {
+void BChecker::restore_trail () {
   lock_scope isolated (isolate);
+  // Restoring the trail is done with respect to the order of literals.
+  // Each unit is allocated in the same order it's pushed the trail.
   for (Clause * c : unit_clauses) {
     const int lit = c->literals[0];
     if (!internal->val (lit))
@@ -513,6 +517,35 @@ void BChecker::check_environment () {
   }
 }
 
+void BChecker::dump_clauses () {
+  printf ("DUMP CLAUSES START\n");
+  int j = unit_clauses.size() - 1;
+  for (int i = internal->clauses.size () - 1; i >= 0; i--) {
+    Clause * c = internal->clauses[i];
+    printf ("(%d) %s: ", i + j + 1, c->garbage ? "garbage" : "       ");
+    printf ("c: ");
+    for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+    printf ("\n");
+  }
+  for (; j >= 0; j--) {
+    Clause * c = unit_clauses[j];
+    printf ("(%d) %s: ", j, c->garbage ? "garbage" : "       ");
+    printf ("c: ");
+    for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+    printf ("\n");
+  }
+  printf ("DUMP CLAUSES END\n");
+}
+
+void BChecker::dump_clause (Clause * c) {
+  if (!c) printf ("0 \n");
+  else {
+    for (int * i = c->begin (); i != c->end (); i++)
+      printf ("%d ", *i);
+      printf ("\n");
+  }
+}
+
 void BChecker::dump_proof () {
   printf ("DUMP PROOF START\n");
   for (int i = proof.size () - 1; i >= 0; i--) {
@@ -532,22 +565,22 @@ void BChecker::dump_proof () {
   printf ("DUMP PROOF END\n");
 }
 
+void BChecker::dump_trail () {
+  printf ("DUMP TRAIL START\n");
+  auto & trail = internal->trail;
+  for (int i = trail.size () - 1; i >= 0; i--)
+    printf ("(%d) %d \n", i, trail[i]);
+  printf ("DUMP TRAIL END\n");
+}
+
 void BChecker::dump_core () {
   printf ("DUMP CORE START\n");
-  for (Clause * c : internal->clauses) {
-    if (c->core) {
-      for (int i = 0; i < c->size; i++)
-        printf ("%d ", c->literals[i]);
-      printf ("\n");
-    }
-  }
-  for (Clause * c : unit_clauses) {
-    if (c->core) {
-      for (int i = 0; i < c->size; i++)
-        printf ("%d ", c->literals[i]);
-      printf ("\n");
-    }
-  }
+  for (Clause * c : internal->clauses)
+    if (c->core)
+      dump_clause (c);
+  for (Clause * c : unit_clauses)
+    if (c->core)
+      dump_clause (c);
   for (int l : internal->assumptions)
     if (internal->failed (l))
       printf ("%d \n", l);
@@ -759,16 +792,19 @@ bool BChecker::validate (bool overconstrained) {
   LOG ("BCHECKER starting validation");
 
   unsigned proof_sz = proof.size ();
-  if (internal->unsat)
+  if (internal->unsat) {
     mark_conflict (overconstrained);
-  else {
+    assert (proof_sz == proof.size ());
+  } else {
     assert (!internal->marked_failed);
-    // New lemmas could be added to the proof.
     internal->failing ();
+    ///NOTE: 'proof_sz' - 'proof.size ()' new lemmas are added to the
+    // proof. we pop out these lemmas in ::pop_failing_assumptions.
     internal->marked_failed = true;
   }
 
   clear_conflict ();
+  // 'trail_sz' is used for lazy shrinking of the trail.
   unsigned trail_sz = internal->trail.size();
   lock_scope validation_scope (validating);
 
@@ -783,8 +819,6 @@ bool BChecker::validate (bool overconstrained) {
       revive_internal_clause (i);
       continue;
     }
-
-    assert (c && (c->size == 2 || !c->garbage));
 
     if (is_on_trail (c)) {
       if (core_units) mark_core (c);
@@ -808,14 +842,14 @@ bool BChecker::validate (bool overconstrained) {
 
   {
     // This is a good point to dump core as some of
-    // the satisfied clauses will be removed after.
+    // the satisfied clauses will be removed later.
     // ```
     // dump_core ();
     // ```
   }
 
-  reallocate  ();
-  put_units_back ();
+  restore_trail ();
+  reallocate ();
   pop_failing_assumptions (proof_sz);
 
   STOP (bchecking);
