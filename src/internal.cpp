@@ -218,7 +218,6 @@ int Internal::cdcl_loop_with_inprocessing () {
   }
 
   if (res == 20 && bchecker) {
-    assert (!opts.chrono && opts.bcheck);
     bchecker->validate ();
   }
 

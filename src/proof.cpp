@@ -38,6 +38,8 @@ void Internal::check () {
 // Enable proof bchecking.
 
 void Internal::bcheck () {
+  if (opts.chrono || opts.probeint)
+    return;
   assert (!bchecker);
   bchecker = new BChecker (this);
 }

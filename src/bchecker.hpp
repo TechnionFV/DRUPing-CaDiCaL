@@ -17,9 +17,11 @@ class Clause;
 
 class BCheckerClause {
 public:
-  bool failed;
-  int revive_at;
   bool marked_garbage;
+  int revive_at;
+  bool failed;
+  bool deleted;
+  Clause * counterpart;
   vector<int> literals;
   BCheckerClause (vector<int> c);
   BCheckerClause (Clause * c);
@@ -29,26 +31,39 @@ public:
   }
 };
 
+class Order {
+  int i;
+public:
+  Order () : i (-1) {}
+  bool cached () const { return i >= 0; }
+  int cache (int i_) {
+    assert (!cached () && i_ >= 0);
+    i = i_;
+  }
+  int evacuate () {
+    assert (cached ());
+    int i_ = i;
+    i = -1;
+    return i_;
+  }
+};
+
 class BChecker {
 
   Internal * internal;
 
   // stack of clausal proof
   //
-  vector<pair<BCheckerClause*, bool>> proof;
+  vector<BCheckerClause *> proof;
 
-  // stack of clausal proof internal counterparts accordingly
+  // for each counterpart 'cp', 'cp_ordering[cp]' contains matching stack index
   //
-  vector<Clause*> counterparts;
+  unordered_map<Clause *, Order> cp_ordering;
 
   // stack containig clauses of size 1
   //
   vector<Clause *> unit_clauses;
   Clause * new_unit_clause (const int lit, bool original);
-
-  // for each counterpart 'cp', 'cp_ordering[cp]' contains matching stack index
-  //
-  unordered_map<Clause *, vector<unsigned>> cp_ordering;
 
   bool core_units;
   bool isolate;

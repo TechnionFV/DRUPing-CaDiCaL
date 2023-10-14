@@ -7,7 +7,8 @@ namespace CaDiCaL {
 
 BCheckerClause::BCheckerClause (vector<int> c)
 :
-  failed (false), marked_garbage (false), revive_at (-1)
+  marked_garbage (false), revive_at (-1),
+  failed (false), deleted (false), counterpart (0)
 {
   assert (c.size ());
   for (auto i : c)
@@ -16,7 +17,8 @@ BCheckerClause::BCheckerClause (vector<int> c)
 
 BCheckerClause::BCheckerClause (Clause * c)
 :
-  failed (false), marked_garbage (false), revive_at (-1)
+  marked_garbage (false), revive_at (-1),
+  failed (false), deleted (false), counterpart (0)
 {
   assert (c && c->size);
   for (auto i = c->begin (); i != c->end (); i++)
@@ -114,33 +116,30 @@ void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = fal
   if (deleted) stats.deleted++;
   else stats.derived++;
   if (c) {
-    auto & indexes = cp_ordering[c];
+    auto & order = cp_ordering[c];
     if (deleted) {
       if (c) {
-        assert (indexes.size () < 2);
-        for (int i : indexes) {
-          assert (counterparts[i] == c);
-          counterparts[i] = 0;
+        if (order.cached ()) {
+          int i = order.evacuate ();
+          assert (proof[i]->counterpart == c);
+          proof[i]->counterpart = 0;
           bc->revive_at = i;
         }
-        indexes.clear ();
-        assert (cp_ordering[c].empty ());
-        cp_ordering.erase (c);
+        assert (!order.cached ());
       }
     } else {
-      indexes.push_back (proof.size());
-      assert (indexes.size() == 1);
+      order.cache (proof.size ());
       stats.counterparts++;
     }
   }
-  proof.push_back ({bc, deleted});
-  counterparts.push_back (deleted ? 0 : c);
-  assert (proof.size() == counterparts.size());
+  bc->deleted = deleted;
+  bc->counterpart = deleted ? 0 : c;
+  proof.push_back (bc);
 }
 
 void BChecker::revive_internal_clause (int i) {
-  assert (!counterparts[i] && proof[i].second);
-  BCheckerClause * bc = proof[i].first;
+  assert (!proof[i]->counterpart && proof[i]->deleted);
+  BCheckerClause * bc = proof[i];
   assert (!bc->unit ());
   vector<int> & clause = internal->clause;
   assert (clause.empty());
@@ -152,11 +151,11 @@ void BChecker::revive_internal_clause (int i) {
   if (bc->revive_at >= 0) {
     int j = bc->revive_at;
     assert (j < i);
-    assert (proof[j].first->revive_at < 0);  // Are chains even possible?
-    assert (!proof[j].second && !counterparts[j]);
-    counterparts[j] = c;
+    assert (proof[j]->revive_at < 0);  // Are chains even possible?
+    assert (!proof[j]->deleted && !proof[j]->counterpart);
+    proof[j]->counterpart = c;
   }
-  counterparts[i] = c;
+  proof[i]->counterpart = c;
   if (bc->failed) mark_core (c);
   {
     ///FIXME: This clause has not been actually allocated
@@ -174,8 +173,7 @@ void BChecker::revive_internal_clause (int i) {
 }
 
 void BChecker::stagnate_internal_clause (const int i) {
-  assert (proof.size() == counterparts.size());
-  Clause * c = counterparts[i];
+  Clause * c = proof[i]->counterpart;
   if (c->size == 1) return;
   internal->unwatch_clause (c);
   {
@@ -186,7 +184,7 @@ void BChecker::stagnate_internal_clause (const int i) {
     if (!c->garbage) {
       assert (!c->moved);
       c->garbage = true;
-      proof[i].first->marked_garbage = true;
+      proof[i]->marked_garbage = true;
     }
   }
 }
@@ -301,13 +299,13 @@ void BChecker::mark_conflict (bool overconstrained) {
       // Last deleted lemma is the falsified original.
       // Revive it and mark it as the conflict clause.
       int i = proof.size () - 1;
-      assert (i >= 0 && proof[i].second);
-      BCheckerClause * bc = proof[i].first;
+      assert (i >= 0 && proof[i]->deleted);
+      BCheckerClause * bc = proof[i];
       if (bc->unit ())
-        counterparts[i] = new_unit_clause (bc->literals[0], false);
+        proof[i]->counterpart = new_unit_clause (bc->literals[0], false);
       else
         revive_internal_clause (i);
-      conflict = counterparts[i];
+      conflict = proof[i]->counterpart;
     } else {
       conflict = internal->conflict;
     }
@@ -441,12 +439,10 @@ void BChecker::mark_core_trail_antecedents () {
 void BChecker::reallocate () {
   assert (!isolate);
   lock_scope isolated (isolate);
-  assert (proof.size() == counterparts.size ());
     for (unsigned i = 0; i < proof.size (); i++) {
-    BCheckerClause * bc = proof[i].first;
-    bool deleted = proof[i].second;
-    Clause * c = counterparts[i];
-    if (!deleted) {
+    BCheckerClause * bc = proof[i];
+    Clause * c = bc->counterpart;
+    if (!bc->deleted) {
       assert (c);
       assert (bc->revive_at < 0);
       if (bc->marked_garbage) {
@@ -457,14 +453,13 @@ void BChecker::reallocate () {
   }
 
   for (int i = proof.size () - 1; i >= 0; i--) {
-    BCheckerClause * bc = proof[i].first;
-    bool deleted = proof[i].second;
-    Clause * c = counterparts[i];
-    if (deleted) {
+    BCheckerClause * bc = proof[i];
+    Clause * c = bc->counterpart;
+    if (bc->deleted) {
       assert (c && !c->garbage);
-      counterparts[i] = 0;
+      bc->counterpart = 0;
       if (bc->revive_at >= 0)
-        counterparts[bc->revive_at] = 0;
+        proof[bc->revive_at]->counterpart = 0;
       if (bc->unit ()) continue;
       internal->unwatch_clause (c);
       internal->mark_garbage (c);
@@ -485,30 +480,26 @@ void BChecker::restore_trail () {
 }
 
 void BChecker::pop_failing_assumptions (unsigned proof_sz) {
-  assert (proof.size () == counterparts.size ());
   if (proof_sz == proof.size ()) return;
   int pop = proof.size () - proof_sz;
   while (pop--) {
-    if (proof.back ().second)
+    if (proof.back ()->deleted)
       stats.deleted--;
     else
       stats.derived--;
     proof.pop_back ();
-    counterparts.pop_back ();
   }
 }
 
 /*------------------------------------------------------------------------*/
 
 void BChecker::check_environment () {
-  assert (proof.size() == counterparts.size());
   assert (proof.size() == unsigned(stats.derived + stats.deleted));
   for (unsigned i = 0; i < proof.size(); i++) {
-    BCheckerClause * bc = proof[i].first;
-    bool deleted = proof[i].second;
-    Clause * c = counterparts[i];
-    assert (bc && (!deleted || !c));
-    if (!deleted && c && c->garbage) {
+    BCheckerClause * bc = proof[i];
+    Clause * c = bc->counterpart;
+    assert (bc && (!bc->deleted || !c));
+    if (!bc->deleted && c && c->garbage) {
       ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
       // clauses as deleted (produce 'd ...' lines) as soon they are marked
       // garbage.
@@ -549,11 +540,11 @@ void BChecker::dump_clause (Clause * c) {
 void BChecker::dump_proof () {
   printf ("DUMP PROOF START\n");
   for (int i = proof.size () - 1; i >= 0; i--) {
-    printf ("(%d) %s: ", i, proof[i].second ? "deleted" : "       ");
-    auto & lits = proof[i].first->literals;
+    printf ("(%d) %s: ", i, proof[i]->deleted ? "deleted" : "       ");
+    auto & lits = proof[i]->literals;
     for (int l : lits)
       printf ("%d ", l);
-    Clause * c = counterparts[i];
+    Clause * c = proof[i]->counterpart;
     printf ("c: ");
     if (!c) printf ("0 ");
     else {
@@ -633,8 +624,8 @@ void BChecker::add_failing_assumption (const vector<int> & c) {
     append_lemma (insert (c), 0);
     append_lemma (insert (c), 0, true);
     int i = proof.size () - 1;
-    proof[i].first->revive_at = i - 1;
-    proof[i].first->failed = true;
+    proof[i]->revive_at = i - 1;
+    proof[i]->failed = true;
   } else {
     Clause * r = internal->var (c[0]).reason;
     if (r) mark_core (r);
@@ -656,23 +647,16 @@ void BChecker::strengthen_clause (Clause * c, int lit) {
     strengthened.push_back (internal_lit);
   }
   assert (strengthened.size() > 1);
-  BCheckerClause * bc_strengthened = insert (strengthened);
-  BCheckerClause * bc_c = insert (c);
-  assert (cp_ordering[c].size () < 2);
   int revive_at = -1;
-  if (cp_ordering[c].size ()) {
-    revive_at = cp_ordering[c][0];
-    counterparts[revive_at] = 0;
+  auto & order = cp_ordering[c];
+  if (order.cached ()) {
+    revive_at = order.evacuate ();
+    proof[revive_at]->counterpart = 0;
     stats.counterparts--;
-    cp_ordering[c].clear ();
   }
-  assert (cp_ordering[c].empty ());
-  append_lemma (bc_strengthened, c);
-  assert (cp_ordering[c].size () == 1);
-  append_lemma (bc_c, 0, true);
-  assert (cp_ordering[c].size () == 1);
-  assert (bc_strengthened->revive_at < 0 && cp_ordering[c].size () == 1);
-  bc_c->revive_at = revive_at;
+  append_lemma (insert (strengthened), c);
+  append_lemma (insert (c), 0, true);
+  proof[proof.size ()-1]->revive_at = revive_at;
   STOP (bchecking);
 }
 
@@ -689,21 +673,16 @@ void BChecker::flush_clause (Clause * c) {
       flushed.push_back (internal_lit);
   }
   assert (flushed.size() > 1);
-  BCheckerClause * bc_flushed = insert (flushed);
-  BCheckerClause * bc_c = insert (c);
-  assert (cp_ordering[c].size () < 2);
   int revive_at = -1;
-  if (cp_ordering[c].size ()) {
-    assert (cp_ordering[c].size () == 1);
-    revive_at = cp_ordering[c][0];
-    counterparts[revive_at] = 0;
+  auto & order = cp_ordering[c];
+  if (order.cached ()) {
+    revive_at = order.evacuate ();
+    proof[revive_at]->counterpart = 0;
     stats.counterparts--;
-    cp_ordering[c].clear ();
   }
-  append_lemma (bc_flushed, c);
-  append_lemma (bc_c, 0, true);
-  assert (bc_flushed->revive_at < 0 && cp_ordering[c].size () == 1);
-  bc_c->revive_at = revive_at;
+  append_lemma (insert (flushed), c);
+  append_lemma (insert (c), 0, true);
+  proof[proof.size ()-1]->revive_at = revive_at;
   STOP (bchecking);
 }
 
@@ -714,25 +693,36 @@ void BChecker::delete_clause (const vector<int> & c, bool original) {
   assert (!validating);
   START (bchecking);
   LOG (c, "BCHECKER clause deletion notification");
-  vector<int> modified (c);
-  if (original) {
-    ///NOTE: This is an original clause that has been reduced to an irredundant
-    // dervied clause after removing all falsified literals. This clause wasn't
-    // allocated in memory. However, it needs to be revived for correct core
-    // extraction and complete validation.
-    // Moving the falsified literals to the end of the clause is crucial for
-    // watching this clause after it is revived in the future as we want to watch
-    // the unassigned literals.
-    int sz = modified.size ();
-    for (int i = 0; i < sz; i++) {
-      if (internal->val (c[i]) < 0) {
-        int bl = modified[--sz];
-        modified[sz] = modified[i];
-        modified[i] = bl;
+  vector<int> modified;
+  ///TODO: remoeve duplicates. if threr is only one qnique literal, skip.
+  for (int lit : c) {
+    if (internal->marked (lit))
+      continue;
+    internal->mark (lit);
+    modified.push_back (lit);
+  }
+  for (int lit : modified)
+    internal->unmark (lit);
+  if (modified.size () == c.size () || modified.size () > 1) {
+    if (original) {
+      ///NOTE: This is an original clause that has been reduced to an irredundant
+      // dervied clause after removing all falsified literals. This clause wasn't
+      // allocated in memory. However, it needs to be revived for correct core
+      // extraction and complete validation.
+      // Moving the falsified literals to the end of the clause is crucial for
+      // watching this clause after it is revived in the future as we want to watch
+      // the unassigned literals.
+      int sz = modified.size ();
+      for (int i = 0; i < sz; i++) {
+        if (internal->val (c[i]) < 0) {
+          int bl = modified[--sz];
+          modified[sz] = modified[i];
+          modified[i] = bl;
+        }
       }
     }
+    append_lemma (insert (modified), 0, true);
   }
-  append_lemma (insert (modified), 0, true);
   STOP (bchecking);
 }
 
@@ -751,27 +741,24 @@ void BChecker::update_moved_counterparts () {
   if (isolate) return;
   assert (!validating);
   START (bchecking);
-  assert (proof.size() == counterparts.size());
   for (unsigned i = 0; i < proof.size(); i++) {
-    bool deleted = proof[i].second;
-    Clause * c = counterparts[i];
+    bool deleted = proof[i]->deleted;
+    Clause * c = proof[i]->counterpart;
 
     if (deleted || !c || !c->moved)
        continue;
 
-    auto & old_indexes = cp_ordering[c];
-    auto & new_indexes = cp_ordering[c->copy];
+    auto & old_order = cp_ordering[c];
+    auto & new_order = cp_ordering[c->copy];
 
 #ifndef NDEBUG
     assert (c->copy && c != c->copy);
-    assert (old_indexes.size() == 1);
-    assert (new_indexes.empty());
+    assert (old_order.cached ());
+    assert (!new_order.cached ());
 #endif
 
-    for (int j : old_indexes)
-      new_indexes.push_back (j);
-    old_indexes.clear ();
-    counterparts[i] = c->copy;
+    new_order.cache (old_order.evacuate ());
+    proof[i]->counterpart = c->copy;
   }
   STOP (bchecking);
 }
@@ -810,8 +797,8 @@ bool BChecker::validate (bool overconstrained) {
 
   for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
 
-    bool deleted = proof[i].second;
-    Clause * c = counterparts[i];
+    bool deleted = proof[i]->deleted;
+    Clause * c = proof[i]->counterpart;
 
     assert (!deleted || !c);
 
