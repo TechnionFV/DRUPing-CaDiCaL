@@ -6,12 +6,32 @@
 
 namespace CaDiCaL {
 
-/*------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------
 
-// This observer implements an offline backward DRUP proof checking enabled by
-// 'opts.bcheck'.
+Bchecker implements an offline backward DRUP-based proof validation, interpolants and
+core extraction enabled by 'opts.bcheck'.
 
-/*------------------------------------------------------------------------*/
+This code implements the algorithm introduced in the paper "DRUPing For Interpolant"
+by Arie Gurfinkel and Yakir Vizel.
+
+Limitations:
+  - Allowing other proof observers/checkers in parallel:
+    During validation/trimming procedure, bchecker can delete or revive clauses that
+    other Internal::Proof observers aren't aware of them. As a result, enabling such
+    observers might trigger errors such as deleting a clause that isn't in the proof.
+
+  - Chronological backtracking enabled by 'opts.chrono':
+    The combination of chronological backtracking with the algorithm is challenging
+    since invariants classically considered crucial to CDCL cease to hold.
+    In its current implementation, the algorithm relies on the level order invariant
+    that ensures the literals are ordered on the assignment trail in ascending order
+    with respect to their decision level.
+    In the interest of compatibility with chronological backtracking, adjustments to
+    the implementation will be considered in the future.
+
+  // - Not all processing techniques are compatible with this feature:
+
+-----------------------------------------------------------------------------------*/
 
 class Clause;
 
@@ -48,6 +68,23 @@ public:
   }
 };
 
+struct lock_scope {
+  bool & key;
+  lock_scope (bool & key_) : key (key_) { assert (!key_); key = true; };
+  ~lock_scope () { key = false; }
+};
+
+template<class T>
+struct save_scope {
+    T& key;
+    T initial;
+    save_scope(T& key_) : key(key_), initial(key_) { };
+    save_scope(T& key_, T val_within_scope) : key(key_), initial(key_) {
+      key = val_within_scope;
+    };
+    ~save_scope() { key = initial; };
+};
+
 class BChecker {
 
   Internal * internal;
@@ -65,6 +102,7 @@ class BChecker {
   vector<Clause *> unit_clauses;
   Clause * new_unit_clause (const int lit, bool original);
 
+  Clause * failed_constraint;
   bool core_units;
   bool isolate;
   bool validating;
@@ -73,16 +111,17 @@ class BChecker {
   BCheckerClause * insert (Clause *);
   BCheckerClause * insert (const vector<int> &);
 
-  void append_lemma (BCheckerClause* bc, Clause * c, bool deleted);
+  bool trivially_satisfied (const vector <int> & c);
+  void append_lemma (BCheckerClause * bc, Clause * c, bool deleted);
+  void append_failed (const vector<int>  & c);
   void revive_internal_clause (int);
   void stagnate_internal_clause (const int);
   void reactivate_fixed (int);
+  void reactivate_eliminated (int);
 
   void shrink_internal_trail (const unsigned);
   void clear_conflict ();
 
-  // popping all trail literals up to and including the literal whose antecedent is 'c'.
-  //
   void undo_trail_literal (int);
   void undo_trail_core (Clause * c, unsigned & trail_sz);
   bool is_on_trail (Clause *);
@@ -90,37 +129,28 @@ class BChecker {
   void mark_core (Clause *);
   void mark_conflict_lit (int l);
   void mark_conflict (bool overconstarined);
+  void mark_failed_conflict ();
 
   void assume_negation (const Clause *);
   bool propagate_conflict ();
   void conflict_analysis_core ();
 
   void mark_core_trail_antecedents ();
-  void reallocate ();
+  void unmark_core_clauses ();
   void restore_trail ();
-  void pop_failing_assumptions (unsigned);
+  void clear_failing_assumptions (const unsigned);
+  void reallocate ();
+  void reconsruct (unsigned);
 
-  // debugging only
-  //
-  void check_environment ();
-  void dump_clauses ();
-  void dump_clause (Clause *);
-  void dump_proof ();
-  void dump_trail ();
-  void dump_core ();
-
-  struct lock_scope {
-    bool & key;
-    lock_scope (bool & key_) : key (key_) { assert (!key_); key = true; };
-    ~lock_scope () { key = false; }
-  };
-
-  struct save_scope {
-    bool & key;
-    bool initial;
-    save_scope (bool & key_) : key (key_) , initial (key_) {};
-    ~save_scope () { key = initial; };
-  };
+  void check_environment () const;
+  void dump_clauses (bool active = false) const;
+  void dump_clause (const Clause *) const;
+  void dump_clause (const BCheckerClause *) const;
+  void dump_clause (const vector <int> &) const;
+  void dump_proof () const;
+  void dump_trail () const;
+  void dump_core () const;
+  bool assert_core_is_unsat () const;
 
   struct {
 
@@ -128,14 +158,20 @@ class BChecker {
     int64_t deleted;            // number of deleted clauses
     int64_t counterparts;       // number of counterpart references
     int64_t units;              // number of unit clauses allcoated
-    int64_t core;               // number of unit clauses allcoated
+    int64_t core;               // number of core clauses in current phase
+    vector<int64_t> cores;      // number of core clauses for each phase
 
+    void save_core_phase () {
+      cores.push_back (core);
+    }
   } stats;
 
 public:
 
   BChecker (Internal *, bool core_units = 0);
   ~BChecker ();
+
+  bool setup_options ();
 
   void add_derived_clause (Clause *);
   void add_derived_unit_clause (const int, bool original = false);
@@ -151,7 +187,7 @@ public:
 
   void update_moved_counterparts ();
 
-  bool validate (bool overconstrained = false);
+  bool trim (bool overconstrained = false);
 
   void print_stats ();
 };

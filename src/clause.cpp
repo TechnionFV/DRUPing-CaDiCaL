@@ -235,8 +235,8 @@ void Internal::delete_clause (Clause * c) {
     if (proof && c->size == 2)
       proof->delete_clause (c);
 
-    if (bchecker && c->size == 2)
-      bchecker->delete_clause (c);
+    // if (bchecker && c->size == 2)
+    //   bchecker->delete_clause (c);
 
   }
   deallocate_clause (c);
@@ -268,7 +268,7 @@ void Internal::mark_garbage (Clause * c) {
   if (proof && c->size != 2)
     proof->delete_clause (c);
 
-  if (bchecker && c->size != 2)
+  if (bchecker/* && c->size != 2*/)
     bchecker->delete_clause (c);
 
   assert (stats.current.total > 0);
@@ -297,7 +297,7 @@ void Internal::mark_garbage (Clause * c) {
 // Almost the same function as 'search_assign' except that we do not pretend
 // to learn a new unit clause (which was confusing in log files).
 
-void Internal::assign_original_unit (int lit) {
+void Internal::assign_original_unit (int lit, bool derived) {
   assert (!level);
   const int idx = vidx (lit);
   assert (!vals[idx]);
@@ -305,7 +305,9 @@ void Internal::assign_original_unit (int lit) {
   Var & v = var (idx);
   v.level = level;
   v.trail = (int) trail.size ();
-  if (!bchecker) v.reason = 0;
+  v.reason = 0;
+  if (bchecker)
+    bchecker->add_derived_unit_clause (lit, !derived);
   const signed char tmp = sign (lit);
   vals[idx] = tmp;
   vals[-idx] = -tmp;
@@ -325,6 +327,7 @@ void Internal::add_new_original_clause () {
   if (level) backtrack ();
   LOG (original, "original clause");
   bool skip = false;
+  size_t duplicated = 0;
   if (unsat) {
     LOG ("skipping clause since formula already inconsistent");
     skip = true;
@@ -334,6 +337,7 @@ void Internal::add_new_original_clause () {
       int tmp = marked (lit);
       if (tmp > 0) {
         LOG ("removing duplicated literal %d", lit);
+        duplicated++;
       } else if (tmp < 0) {
         LOG ("tautological since both %d and %d occur", -lit, lit);
         skip = true;
@@ -358,7 +362,7 @@ void Internal::add_new_original_clause () {
     if (proof) proof->delete_clause (original);
   } else {
     size_t size = clause.size ();
-    const bool derived = original.size () > size;
+    const bool derived = original.size () > (size + duplicated);
     if (!size) {
       if (!unsat) {
         if (!original.size ()) VERBOSE (1, "found empty original clause");
@@ -366,10 +370,7 @@ void Internal::add_new_original_clause () {
         unsat = true;
       }
     } else if (size == 1) {
-      const int lit = clause[0];
-      if (bchecker)
-        bchecker->add_derived_unit_clause (lit, !derived);
-      assign_original_unit (lit);
+      assign_original_unit (clause[0], derived);
     } else {
       Clause * c = new_clause (false);
       watch_clause (c);
@@ -388,7 +389,7 @@ void Internal::add_new_original_clause () {
     if (bchecker && !size && original.size ()) {
         if (!derived)
           bchecker->delete_clause (original, true);
-        bchecker->validate (true /* overcontrained */);
+        bchecker->trim (true /* overcontrained */);
     }
   }
   clause.clear ();

@@ -519,7 +519,7 @@ struct Internal {
   void deallocate_clause(Clause *);
   void delete_clause (Clause *);
   void mark_garbage (Clause *);
-  void assign_original_unit (int);
+  void assign_original_unit (int lit, bool derived);
   void add_new_original_clause ();
   Clause * new_learned_redundant_clause (int glue);
   Clause * new_hyper_binary_resolved_clause (bool red, int glue);

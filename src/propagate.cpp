@@ -52,7 +52,7 @@ inline void Internal::search_assign (int lit, Clause * reason) {
 
   const int idx = vidx (lit);
   assert (!vals[idx]);
-  assert (!flags (idx).eliminated () || reason == decision_reason);
+  assert (bchecker || !flags (idx).eliminated () || reason == decision_reason);
   Var & v = var (idx);
   int lit_level;
 
@@ -193,7 +193,7 @@ bool Internal::propagate () {
         // In principle we can ignore garbage binary clauses too, but that
         // would require to dereference the clause pointer all the time with
         //
-        // if (w.clause->garbage) { j--; continue; } // (*)
+        if (bchecker && w.clause->garbage) { j--; continue; } // (*)
         //
         // This is too costly.  It is however necessary to produce correct
         // proof traces if binary clauses are traced to be deleted ('d ...'

@@ -35,15 +35,6 @@ void Internal::check () {
   proof->connect (checker);
 }
 
-// Enable proof bchecking.
-
-void Internal::bcheck () {
-  if (opts.chrono || opts.probeint)
-    return;
-  assert (!bchecker);
-  bchecker = new BChecker (this);
-}
-
 // We want to close a proof trace and stop checking as soon we are done.
 
 void Internal::close_trace () {

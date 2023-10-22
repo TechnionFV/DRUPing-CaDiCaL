@@ -43,7 +43,8 @@ void Solver::transition_to_unknown_state () {
     if (internal->opts.bcheck)
       internal->bcheck ();
     if (internal->opts.check &&
-        internal->opts.checkproof) {
+        internal->opts.checkproof &&
+        !internal->opts.bcheck) {
       internal->check ();
     }
   } else if (state () == SATISFIED) {

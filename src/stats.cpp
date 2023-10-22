@@ -317,8 +317,9 @@ void BChecker::print_stats () {
   MSG ("derived:         %15" PRId64 "   %10.2f %%  of all clauses", stats.derived, percent (stats.derived, all));
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.deleted, all));
   MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all clauses", stats.counterparts, percent (stats.counterparts, all));
-  MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.units, all));
-  MSG ("core:            %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.core, all));
+  MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.units, percent (stats.units, all));
+  for (int i = 1; i <= stats.cores.size (); i++)
+    MSG ("phase %d core:        %11" PRId64 "   %10.2f %%  of all clauses", i, stats.cores[i-1], percent (stats.core, all));
 }
 
 }
