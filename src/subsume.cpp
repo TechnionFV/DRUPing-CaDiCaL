@@ -161,7 +161,7 @@ void Internal::strengthen_clause (Clause * c, int lit) {
   assert (c->size > 2);
   LOG (c, "removing %d in", lit);
   if (proof) proof->strengthen_clause (c, lit);
-  if (bchecker) bchecker->strengthen_clause (c, lit);
+  if (drupper) drupper->strengthen_clause (c, lit);
   if (!c->redundant) mark_removed (lit);
   auto new_end = remove (c->begin (), c->end (), lit);
   assert (new_end + 1 == c->end ()), (void) new_end;

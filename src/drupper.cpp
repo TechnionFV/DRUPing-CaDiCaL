@@ -6,17 +6,17 @@ namespace CaDiCaL {
 
 /*------------------------------------------------------------------------*/
 
-// Enable proof bchecking.
+// Enable proof drupping.
 
-void Internal::bcheck () {
-  assert (!bchecker);
-  bchecker = new BChecker (this);
-  bchecker->setup_options ();
+void Internal::drup () {
+  assert (!drupper);
+  drupper = new Drupper (this);
+  drupper->setup_options ();
 }
 
 /*------------------------------------------------------------------------*/
 
-BCheckerClause::BCheckerClause (vector<int> c)
+DrupperClause::DrupperClause (vector<int> c)
 :
   marked_garbage (false), revive_at (-1),
   failed (false), deleted (false), counterpart (0)
@@ -26,7 +26,7 @@ BCheckerClause::BCheckerClause (vector<int> c)
     literals.push_back (i);
 };
 
-BCheckerClause::BCheckerClause (Clause * c)
+DrupperClause::DrupperClause (Clause * c)
 :
   marked_garbage (false), revive_at (-1),
   failed (false), deleted (false), counterpart (0)
@@ -38,30 +38,33 @@ BCheckerClause::BCheckerClause (Clause * c)
 
 /*------------------------------------------------------------------------*/
 
-BChecker::BChecker (Internal * i, bool core_units)
+Drupper::Drupper (Internal * i, File * f, bool core_units)
 :
   internal (i), failed_constraint (0),
   core_units (core_units), isolate (0),
-  validating (0)
+  validating (0), file (f)
 {
-  LOG ("BCHECKER new");
+  LOG ("DRUPPER new");
 
   // Initialize statistics.
   //
   memset (&stats, 0, sizeof (stats));
+
+  if (internal->opts.drupdumpcore && !f)
+    file = File::write (internal, stdout, "<stdout>");
 }
 
-BChecker::~BChecker () {
-  LOG ("BCHECKER delete");
+Drupper::~Drupper () {
+  LOG ("DRUPPER delete");
   isolate = true;
-  for (const auto & bc : bchecker_clauses)
-    delete (BCheckerClause *) bc;
+  for (const auto & bc : drupper_clauses)
+    delete (DrupperClause *) bc;
   for (const auto & c : unit_clauses)
     delete [] (char*) c;
 }
 /*------------------------------------------------------------------------*/
 
-bool BChecker::setup_options () {
+bool Drupper::setup_options () {
   auto & opts = internal->opts;
   bool updated = false;
   updated |= opts.chrono;
@@ -79,7 +82,7 @@ bool BChecker::setup_options () {
 
 /*------------------------------------------------------------------------*/
 
-Clause * BChecker::new_unit_clause (const int lit, bool original) {
+Clause * Drupper::new_unit_clause (const int lit, bool original) {
 
   const int size = 1;
 
@@ -121,40 +124,41 @@ Clause * BChecker::new_unit_clause (const int lit, bool original) {
 
 /*------------------------------------------------------------------------*/
 
-BCheckerClause * BChecker::insert (Clause * c) {
+DrupperClause * Drupper::insert (Clause * c) {
   vector<int> lits;
   for (int  i = 0; i < c->size; i++)
     lits.push_back (c->literals[i]);
-  BCheckerClause * bc = new BCheckerClause (lits);
-  bchecker_clauses.push_back (bc);
+  DrupperClause * bc = new DrupperClause (lits);
+  drupper_clauses.push_back (bc);
   return bc;
 }
 
-BCheckerClause * BChecker::insert (const vector<int> & lits) {
-  BCheckerClause * bc = new BCheckerClause (lits);
-  bchecker_clauses.push_back (bc);
+DrupperClause * Drupper::insert (const vector<int> & lits) {
+  DrupperClause * bc = new DrupperClause (lits);
+  drupper_clauses.push_back (bc);
   return bc;
 }
 
 /*------------------------------------------------------------------------*/
 
-bool BChecker::trivially_satisfied (const vector <int> & c) {
+// Return true iff the clause contains a literal and its negation.
+bool Drupper::trivially_satisfied (const vector <int> & c) {
   struct {
     bool operator () (const int & a, const int & b) {
       return (abs (a) < abs (b)) || (abs (a) == abs (b) && a < b);
     }
-  } clause_sort;
+  } sorter;
   auto sorted (c);
-  std::sort (sorted.begin (), sorted.end (), clause_sort);
-  for (int i = 1; i < sorted.size (); i++)
+  std::sort (sorted.begin (), sorted.end (), sorter);
+  for (unsigned i = 1; i < sorted.size (); i++)
     if (sorted[i] == -sorted[i-1])
       return true;
   return false;
 }
 
-///TODO: Consider using lazy bchecker clause allocation: allocate once the internal
+///TODO: Consider using lazy drupper clause allocation: allocate once the internal
 // clause is discarded from memory.
-void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = false) {
+void Drupper::append_lemma (DrupperClause * bc, Clause * c, bool deleted = false) {
   assert (bc->revive_at < 0);
   if (deleted) stats.deleted++;
   else stats.derived++;
@@ -163,7 +167,7 @@ void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = fal
     if (deleted) {
       if (c) {
         if (order.cached ()) {
-          int i = order.evacuate ();
+          int i = order.remove ();
           assert (proof[i]->counterpart == c);
           proof[i]->counterpart = 0;
           bc->revive_at = i;
@@ -180,7 +184,7 @@ void BChecker::append_lemma (BCheckerClause * bc, Clause * c, bool deleted = fal
   proof.push_back (bc);
 }
 
-void BChecker::append_failed (const vector<int> & c) {
+void Drupper::append_failed (const vector<int> & c) {
   append_lemma (insert (c), 0);
   append_lemma (insert (c), 0, true);
   int i = proof.size () - 1;
@@ -188,9 +192,9 @@ void BChecker::append_failed (const vector<int> & c) {
   proof[i]->failed = true;
 }
 
-void BChecker::revive_internal_clause (int i) {
+void Drupper::revive_internal_clause (int i) {
   assert (!proof[i]->counterpart && proof[i]->deleted);
-  BCheckerClause * bc = proof[i];
+  DrupperClause * bc = proof[i];
   assert (!bc->unit ());
   vector<int> & clause = internal->clause;
   assert (clause.empty());
@@ -213,7 +217,7 @@ void BChecker::revive_internal_clause (int i) {
     mark_core (c);
 }
 
-void BChecker::stagnate_internal_clause (const int i) {
+void Drupper::stagnate_internal_clause (const int i) {
   Clause * c = proof[i]->counterpart;
   if (c->size == 1) return;
   internal->unwatch_clause (c);
@@ -234,7 +238,7 @@ void BChecker::stagnate_internal_clause (const int i) {
 ///NOTE: The internal solver does not support reactivation
 // of fixed literals. However, this is needed to be able
 // to propagate these literals again.
-void BChecker::reactivate_fixed (int l) {
+void Drupper::reactivate_fixed (int l) {
   Flags & f = internal->flags (l);
   assert (f.status == Flags::FIXED);
   assert (internal->stats.now.fixed > 0);
@@ -249,7 +253,7 @@ void BChecker::reactivate_fixed (int l) {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::shrink_internal_trail (const unsigned trail_sz) {
+void Drupper::shrink_internal_trail (const unsigned trail_sz) {
   assert (trail_sz <= internal->trail.size());
   internal->trail.resize(trail_sz);
   internal->propagated = trail_sz;
@@ -258,7 +262,7 @@ void BChecker::shrink_internal_trail (const unsigned trail_sz) {
   assert(internal->control.size () == 1);
 }
 
-void BChecker::clear_conflict () {
+void Drupper::clear_conflict () {
   internal->unsat = false;
   internal->backtrack();
   internal->conflict = 0;
@@ -266,19 +270,21 @@ void BChecker::clear_conflict () {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::undo_trail_literal (int lit) {
+void Drupper::undo_trail_literal (int lit) {
   assert (internal->val (lit) > 0);
   if (!internal->active (lit))
     reactivate_fixed (lit);
   internal->unassign (lit);
   assert (!internal->val (lit));
   assert (internal->active (lit));
+#ifndef NDEBUG
   Var & v = internal->var (lit);
   assert (v.reason);
   // v.reason = 0;
+#endif
 }
 
-void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
+void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
 #ifndef NDEBUG
   assert (trail_sz > 0 && trail_sz <= internal->trail.size());
@@ -313,7 +319,7 @@ void BChecker::undo_trail_core (Clause * c, unsigned & trail_sz) {
   undo_trail_literal (clit);
 }
 
-bool BChecker::is_on_trail (Clause * c) {
+bool Drupper::is_on_trail (Clause * c) {
   assert (c);
   int lit = c->literals[0];
   return internal->val (lit) > 0 && internal->var (lit).reason == c;
@@ -321,20 +327,20 @@ bool BChecker::is_on_trail (Clause * c) {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::mark_core (Clause * c) {
+void Drupper::mark_core (Clause * c) {
   assert (c);
   if (!c->core) stats.core++;
   c->core = true;
 }
 
-void BChecker::mark_conflict_lit (int l) {
+void Drupper::mark_conflict_lit (int l) {
   assert (internal->val(l) < 0);
   Var & v = internal->var(l);
   Clause * reason = v.reason;
   if (reason) mark_core (reason);
 }
 
-void BChecker::mark_conflict (bool overconstrained) {
+void Drupper::mark_conflict (bool overconstrained) {
   assert (!overconstrained || internal->unsat);
   if (internal->unsat) {
     Clause * conflict = 0;
@@ -343,7 +349,7 @@ void BChecker::mark_conflict (bool overconstrained) {
       // Revive it and mark it as the conflict clause.
       int i = proof.size () - 1;
       assert (i >= 0 && proof[i]->deleted);
-      BCheckerClause * bc = proof[i];
+      DrupperClause * bc = proof[i];
       if (bc->unit ())
         proof[i]->counterpart = new_unit_clause (bc->literals[0], false);
       else
@@ -358,12 +364,13 @@ void BChecker::mark_conflict (bool overconstrained) {
   }
 }
 
-void BChecker::mark_failed_conflict () {
+void Drupper::mark_failed_conflict () {
   assert (!failed_constraint);
   assert (internal->clause.empty ());
   if (internal->unsat_constraint && internal->constraint.size () > 1) {
     internal->clause = internal->constraint;
     failed_constraint = internal->new_clause (true);
+    mark_core (failed_constraint);
     internal->watch_clause (failed_constraint);
     internal->clause.clear ();
   }
@@ -374,7 +381,7 @@ void BChecker::mark_failed_conflict () {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::assume_negation (const Clause * lemma) {
+void Drupper::assume_negation (const Clause * lemma) {
   assert (validating && !internal->level);
   assert (lemma && lemma->core);
   assert (internal->propagated == internal->trail.size ());
@@ -391,7 +398,7 @@ void BChecker::assume_negation (const Clause * lemma) {
   assert (internal->level  == int (decisions.size()));
 }
 
-bool BChecker::propagate_conflict () {
+bool Drupper::propagate_conflict () {
   assert(!internal->conflict);
   if (internal->propagate ())
   {
@@ -409,7 +416,7 @@ bool BChecker::propagate_conflict () {
 }
 
 
-void BChecker::conflict_analysis_core () {
+void Drupper::conflict_analysis_core () {
 
   Clause * conflict = internal->conflict;
   assert(conflict);
@@ -474,7 +481,7 @@ void BChecker::conflict_analysis_core () {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::mark_core_trail_antecedents () {
+void Drupper::mark_core_trail_antecedents () {
   for (int i = internal->trail.size() - 1; i >= 0; i--) {
     int lit = internal->trail[i];
     Clause * reason = internal->var (lit).reason;
@@ -489,8 +496,8 @@ void BChecker::mark_core_trail_antecedents () {
   }
 }
 
-void BChecker::unmark_core_clauses () {
-  stats.save_core_phase ();
+void Drupper::unmark_core_clauses () {
+  save_core_phase_stats ();
   for (Clause * c : internal->clauses)
     if (c->core)
       c->core = false, stats.core--;
@@ -500,7 +507,7 @@ void BChecker::unmark_core_clauses () {
   assert (stats.core == 0);
 }
 
-void BChecker::restore_trail () {
+void Drupper::restore_trail () {
   assert (isolate);
   // Restoring the trail is done with respect to the order of literals.
   // Each unit is allocated in the same order it's pushed the trail.
@@ -512,7 +519,7 @@ void BChecker::restore_trail () {
   }
 }
 
-void BChecker::clear_failing_assumptions (const unsigned proof_sz) {
+void Drupper::clear_failing_assumptions (const unsigned proof_sz) {
   if (proof.size () == proof_sz) return;
   int pop = proof.size () - proof_sz;
   while (pop--) {
@@ -524,9 +531,9 @@ void BChecker::clear_failing_assumptions (const unsigned proof_sz) {
   };
 }
 
-void BChecker::reallocate () {
+void Drupper::reallocate () {
   assert (isolate);
-  for (BCheckerClause * bc : proof) {
+  for (DrupperClause * bc : proof) {
     Clause * c = bc->counterpart;
     if (!bc->deleted) {
       assert (c);
@@ -541,7 +548,7 @@ void BChecker::reallocate () {
     }
   }
   for (int i = proof.size () - 1; i >= 0; i--) {
-    BCheckerClause * bc = proof[i];
+    DrupperClause * bc = proof[i];
     Clause * c = bc->counterpart;
     if (bc->deleted) {
       assert (c && !c->garbage);
@@ -554,7 +561,7 @@ void BChecker::reallocate () {
   }
 }
 
-void BChecker::reconsruct (const unsigned proof_sz) {
+void Drupper::reconsruct (const unsigned proof_sz) {
   lock_scope isolated (isolate);
   reallocate ();
   if (failed_constraint) {
@@ -568,10 +575,10 @@ void BChecker::reconsruct (const unsigned proof_sz) {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::check_environment () const {
+void Drupper::check_environment () const {
   assert (proof.size() == unsigned(stats.derived + stats.deleted));
   for (unsigned i = 0; i < proof.size(); i++) {
-    BCheckerClause * bc = proof[i];
+    DrupperClause * bc = proof[i];
     Clause * c = bc->counterpart;
     assert (bc && (!bc->deleted || !c));
     if (!bc->deleted && c && c->garbage) {
@@ -584,7 +591,7 @@ void BChecker::check_environment () const {
   }
 }
 
-void BChecker::dump_clauses (bool active) const {
+void Drupper::dump_clauses (bool active) const {
   printf ("DUMP CLAUSES START\n");
   int j = unit_clauses.size() - 1;
   for (int i = internal->clauses.size () - 1; i >= 0; i--) {
@@ -608,7 +615,7 @@ void BChecker::dump_clauses (bool active) const {
   printf ("DUMP CLAUSES END\n");
 }
 
-void BChecker::dump_clause (const Clause * c) const {
+void Drupper::dump_clause (const Clause * c) const {
   if (!c) printf ("0 \n");
   else {
     const int * lits = c->literals;
@@ -618,20 +625,20 @@ void BChecker::dump_clause (const Clause * c) const {
   }
 }
 
-void BChecker::dump_clause (const BCheckerClause * bc) const {
+void Drupper::dump_clause (const DrupperClause * bc) const {
   assert (bc);
   for (int i : bc->literals)
     printf ("%d ", i);
   printf ("\n");
 }
 
-void BChecker::dump_clause (const vector <int> & c) const {
+void Drupper::dump_clause (const vector <int> & c) const {
   for (int i : c)
     printf ("%d ", i);
   printf ("\n");
 }
 
-void BChecker::dump_proof () const {
+void Drupper::dump_proof () const {
   printf ("DUMP PROOF START\n");
   for (int i = proof.size () - 1; i >= 0; i--) {
     printf ("(%d) %s: ", i, proof[i]->deleted ? "deleted" : "       ");
@@ -650,7 +657,7 @@ void BChecker::dump_proof () const {
   printf ("DUMP PROOF END\n");
 }
 
-void BChecker::dump_trail () const {
+void Drupper::dump_trail () const {
   printf ("DUMP TRAIL START\n");
   auto & trail = internal->trail;
   for (int i = trail.size () - 1; i >= 0; i--)
@@ -658,23 +665,9 @@ void BChecker::dump_trail () const {
   printf ("DUMP TRAIL END\n");
 }
 
-void BChecker::dump_core () const {
-  printf ("DUMP CORE START\n");
-  for (Clause * c : internal->clauses)
-    if (c->core)
-      dump_clause (c);
-  for (Clause * c : unit_clauses)
-    if (c->core)
-      dump_clause (c);
-  for (int l : internal->assumptions)
-    if (internal->failed (l))
-      printf ("%d \n", l);
-  printf ("DUMP CORE END\n");
-}
-
-bool BChecker::assert_core_is_unsat () const {
+bool Drupper::core_is_unsat () const {
   CaDiCaL::Solver s;
-  s.set ("bcheck", 0);
+  s.set ("drup", 0);
   for (Clause * c : internal->clauses)
     if (c->core) {
       for (int * i = c->begin (); i != c->end (); i++)
@@ -691,61 +684,84 @@ bool BChecker::assert_core_is_unsat () const {
       s.add (l);
       s.add (0);
     }
-  if (internal->unsat_constraint)
-    for (int l : internal->constraint) {
-        s.add (l);
-        s.add (0);
-      }
+  if (internal->unsat_constraint && internal->constraint.size () == 1) {
+    for (int i : internal->constraint)
+      s.add (i);
+    s.add (0);
+  } // Otherwise should be part if internal->clauses
   return s.solve () == 20;
+}
+
+void Drupper::dump_core () const {
+  if (!internal->opts.drupdumpcore || !file)
+    return;
+  file->put ("DUMP CORE START\n");
+  for (Clause * c : internal->clauses)
+    if (c->core) {
+      for (int * i = c->begin (); i != c->end (); i++)
+        file->put (*i), file->put (' ');
+      file->put ("0\n");
+    }
+  for (Clause * c : unit_clauses)
+    if (c->core) {
+      file->put (c->literals[0]);
+      file->put (" 0\n");
+    }
+  for (int l : internal->assumptions)
+    if (internal->failed (l)) {
+      file->put (l);
+      file->put (" 0\n");
+    }
+  if (internal->unsat_constraint && internal->constraint.size () == 1) {
+    for (int i : internal->constraint)
+      file->put (i), file->put (' ');
+    file->put ("0\n");
+  } // Otherwise should be part if internal->clauses
+  file->put ("DUMP END START\n");
 }
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::add_derived_clause (Clause * c) {
+void Drupper::add_derived_clause (Clause * c) {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
-  LOG (c, "BCHECKER derived clause notification");
+  START (drupping);
+  LOG (c, "DRUPPER derived clause notification");
   append_lemma (insert (c), c);
-  STOP (bchecking);
+  STOP (drupping);
 }
 
-void BChecker::add_derived_unit_clause (const int lit, bool original) {
+void Drupper::add_derived_unit_clause (const int lit, bool original) {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
-  LOG ({lit}, "BCHECKER derived clause notification");
+  START (drupping);
+  LOG ({lit}, "DRUPPER derived clause notification");
   assert (lit);
   assert (!original || !internal->var(lit).reason);
   Clause * c = 0;
   if (!internal->var(lit).reason)
     internal->var(lit).reason = c = new_unit_clause (lit, original);
-  if (!original) {
+  if (!original)
     append_lemma (insert ({lit}), !c ? new_unit_clause (lit, original) : c);
-    {
-      ///FIXME: This might fail if probing ([0] == -lit).
-      // assert (internal->var(lit).reason->literals[0] == lit);
-    }
-  }
-  STOP (bchecking);
+  assert (internal->var(lit).reason->literals[0] == lit);
+  STOP (drupping);
 }
 
-void BChecker::add_derived_empty_clause () {
+void Drupper::add_derived_empty_clause () {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
-  LOG ("BCHECKER derived empty clause notification");
-  STOP (bchecking);
+  START (drupping);
+  LOG ("DRUPPER derived empty clause notification");
+  STOP (drupping);
 }
 
-void BChecker::add_failing_assumption (const vector<int> & c) {
+void Drupper::add_failing_assumption (const vector<int> & c) {
   if (isolate) return;
   assert (!validating);
   if (c.size () > 1) {
     // See ../interesting_tests/assump_and_constraint
-    if (trivially_satisfied (c))
-      return;
-    append_failed (c);
+    if (!trivially_satisfied (c))
+      append_failed (c);
   } else {
     Clause * r = internal->var (c[0]).reason;
     if (r) mark_core (r);
@@ -754,12 +770,12 @@ void BChecker::add_failing_assumption (const vector<int> & c) {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::strengthen_clause (Clause * c, int lit) {
+void Drupper::strengthen_clause (Clause * c, int lit) {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
+  START (drupping);
   assert (c && lit);
-  LOG (c, "BCHECKER strengthen by removing %d in", lit);
+  LOG (c, "DRUPPER strengthen by removing %d in", lit);
   vector<int> strengthened;
   for (int i = 0; i < c->size; i++) {
     int internal_lit = c->literals[i];
@@ -770,21 +786,21 @@ void BChecker::strengthen_clause (Clause * c, int lit) {
   int revive_at = -1;
   auto & order = cp_ordering[c];
   if (order.cached ()) {
-    revive_at = order.evacuate ();
+    revive_at = order.remove ();
     proof[revive_at]->counterpart = 0;
     stats.counterparts--;
   }
   append_lemma (insert (strengthened), c);
   append_lemma (insert (c), 0, true);
   proof[proof.size ()-1]->revive_at = revive_at;
-  STOP (bchecking);
+  STOP (drupping);
 }
 
-void BChecker::flush_clause (Clause * c) {
+void Drupper::flush_clause (Clause * c) {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
-  LOG (c, "BCHECKER flushing falsified literals in");
+  START (drupping);
+  LOG (c, "DRUPPER flushing falsified literals in");
   assert (c);
   vector<int> flushed;
   for (int i = 0; i < c->size; i++) {
@@ -796,7 +812,7 @@ void BChecker::flush_clause (Clause * c) {
   int revive_at = -1;
   auto & order = cp_ordering[c];
   if (order.cached ()) {
-    revive_at = order.evacuate ();
+    revive_at = order.remove ();
     assert (proof[revive_at]->counterpart == c);
     proof[revive_at]->counterpart = 0;
     stats.counterparts--;
@@ -804,16 +820,16 @@ void BChecker::flush_clause (Clause * c) {
   append_lemma (insert (flushed), c);
   append_lemma (insert (c), 0, true);
   proof[proof.size ()-1]->revive_at = revive_at;
-  STOP (bchecking);
+  STOP (drupping);
 }
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::delete_clause (const vector<int> & c, bool original) {
+void Drupper::delete_clause (const vector<int> & c, bool original) {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
-  LOG (c, "BCHECKER clause deletion notification");
+  START (drupping);
+  LOG (c, "DRUPPER clause deletion notification");
   vector<int> modified;
   ///TODO: remoeve duplicates. if there is only one unique literal, skip.
   for (int lit : c) {
@@ -844,24 +860,24 @@ void BChecker::delete_clause (const vector<int> & c, bool original) {
     }
     append_lemma (insert (modified), 0, true);
   }
-  STOP (bchecking);
+  STOP (drupping);
 }
 
-void BChecker::delete_clause (Clause * c) {
+void Drupper::delete_clause (Clause * c) {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
-  LOG (c, "BCHECKER clause deletion notification");
+  START (drupping);
+  LOG (c, "DRUPPER clause deletion notification");
   append_lemma (insert (c), c, true);
-  STOP (bchecking);
+  STOP (drupping);
 }
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::update_moved_counterparts () {
+void Drupper::update_moved_counterparts () {
   if (isolate) return;
   assert (!validating);
-  START (bchecking);
+  START (drupping);
   for (unsigned i = 0; i < proof.size(); i++) {
     bool deleted = proof[i]->deleted;
     Clause * c = proof[i]->counterpart;
@@ -878,18 +894,15 @@ void BChecker::update_moved_counterparts () {
     assert (!new_order.cached ());
 #endif
 
-    new_order.cache (old_order.evacuate ());
+    new_order.cache (old_order.remove ());
     proof[i]->counterpart = c->copy;
   }
-  STOP (bchecking);
+  STOP (drupping);
 }
 
 /*------------------------------------------------------------------------*/
 
-bool BChecker::trim (bool overconstrained) {
-
-  START (bchecking);
-  LOG ("BCHECKER starting validation");
+bool Drupper::trim (bool overconstrained) {
 
 #ifndef NDEBUG
   assert (!setup_options ());
@@ -906,6 +919,9 @@ bool BChecker::trim (bool overconstrained) {
   } else {
     mark_failed_conflict ();
   }
+
+  START (drupping);
+  LOG ("DRUPPER starting validation");
 
   clear_conflict ();
 
@@ -949,17 +965,17 @@ bool BChecker::trim (bool overconstrained) {
     // This is a good point to dump core as some of
     // the satisfied clauses will be removed later.
     // ```
-    // dump_core ();
+    dump_core ();
     // ```
     #ifndef NDEBUG
-      assert (assert_core_is_unsat ());
+      assert (core_is_unsat ());
     #endif
   }
 
   unmark_core_clauses ();
   reconsruct (proof_sz);
 
-  STOP (bchecking);
+  STOP (drupping);
   return true;
 }
 

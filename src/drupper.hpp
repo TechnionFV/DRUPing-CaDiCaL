@@ -1,5 +1,5 @@
-#ifndef _bchecker_hpp_INCLUDED
-#define _bchecker_hpp_INCLUDED
+#ifndef _drupper_hpp_INCLUDED
+#define _drupper_hpp_INCLUDED
 
 #include "observer.hpp"
 #include "unordered_map"
@@ -8,15 +8,15 @@ namespace CaDiCaL {
 
 /*-----------------------------------------------------------------------------------
 
-Bchecker implements an offline backward DRUP-based proof validation, interpolants and
-core extraction enabled by 'opts.bcheck'.
+Drupper implements an offline backward DRUP-based proof validation, interpolants and
+core extraction enabled by 'opts.drup'.
 
 This code implements the algorithm introduced in the paper "DRUPing For Interpolant"
 by Arie Gurfinkel and Yakir Vizel.
 
 Limitations:
   - Allowing other proof observers/checkers in parallel:
-    During validation/trimming procedure, bchecker can delete or revive clauses that
+    During validation/trimming procedure, drupper can delete or revive clauses that
     other Internal::Proof observers aren't aware of them. As a result, enabling such
     observers might trigger errors such as deleting a clause that isn't in the proof.
 
@@ -29,13 +29,22 @@ Limitations:
     In the interest of compatibility with chronological backtracking, adjustments to
     the implementation will be considered in the future.
 
-  // - Not all processing techniques are compatible with this feature:
+  - Not all processing techniques are compatible with this feature:
+    1) probing / advanced probing / lookahead: isn't resolution based.
+    2) conditioning: is this another version of BCE (Bounded Clause Elimination)?
+    3) compacting: this feature is not compatible.
+       * drupper will revive clauses with wrong mapping.
+       * fixed literals are literals that drupper wants to keep.
+       * even if we disable reducing/garbage collection ... would this be still be worth it?
+    4) subsuming: ok (at least empirically) but does it even work without vivcation? I think so...
+    5) vivication: changes order of literals (violated reason_of_lit[0] == lit).
+    6) eliminating: problem with - learn_empty_clause (). Passed validation but need to correctly mark core
 
 -----------------------------------------------------------------------------------*/
 
 class Clause;
 
-class BCheckerClause {
+class DrupperClause {
 public:
   bool marked_garbage;
   int revive_at;
@@ -43,9 +52,9 @@ public:
   bool deleted;
   Clause * counterpart;
   vector<int> literals;
-  BCheckerClause (vector<int> c);
-  BCheckerClause (Clause * c);
-  ~BCheckerClause () = default;
+  DrupperClause (vector<int> c);
+  DrupperClause (Clause * c);
+  ~DrupperClause () = default;
   bool unit () const {
     return literals.size () == 1;
   }
@@ -56,11 +65,11 @@ class Order {
 public:
   Order () : i (-1) {}
   bool cached () const { return i >= 0; }
-  int cache (int i_) {
+  void cache (int i_) {
     assert (!cached () && i_ >= 0);
     i = i_;
   }
-  int evacuate () {
+  int remove () {
     assert (cached ());
     int i_ = i;
     i = -1;
@@ -85,13 +94,13 @@ struct save_scope {
     ~save_scope() { key = initial; };
 };
 
-class BChecker {
+class Drupper {
 
   Internal * internal;
 
   // stack of clausal proof
   //
-  vector<BCheckerClause *> proof;
+  vector<DrupperClause *> proof;
 
   // for each counterpart 'cp', 'cp_ordering[cp]' contains matching stack index
   //
@@ -106,13 +115,14 @@ class BChecker {
   bool core_units;
   bool isolate;
   bool validating;
+  File * file;
 
-  vector<BCheckerClause *> bchecker_clauses;
-  BCheckerClause * insert (Clause *);
-  BCheckerClause * insert (const vector<int> &);
+  vector<DrupperClause *> drupper_clauses;
+  DrupperClause * insert (Clause *);
+  DrupperClause * insert (const vector<int> &);
 
   bool trivially_satisfied (const vector <int> & c);
-  void append_lemma (BCheckerClause * bc, Clause * c, bool deleted);
+  void append_lemma (DrupperClause * bc, Clause * c, bool deleted);
   void append_failed (const vector<int>  & c);
   void revive_internal_clause (int);
   void stagnate_internal_clause (const int);
@@ -145,12 +155,14 @@ class BChecker {
   void check_environment () const;
   void dump_clauses (bool active = false) const;
   void dump_clause (const Clause *) const;
-  void dump_clause (const BCheckerClause *) const;
+  void dump_clause (const DrupperClause *) const;
   void dump_clause (const vector <int> &) const;
   void dump_proof () const;
   void dump_trail () const;
+
+  bool core_is_unsat () const;
   void dump_core () const;
-  bool assert_core_is_unsat () const;
+
 
   struct {
 
@@ -161,15 +173,16 @@ class BChecker {
     int64_t core;               // number of core clauses in current phase
     vector<int64_t> cores;      // number of core clauses for each phase
 
-    void save_core_phase () {
-      cores.push_back (core);
-    }
   } stats;
+
+  void save_core_phase_stats () {
+    stats.cores.push_back (stats.core);
+  }
 
 public:
 
-  BChecker (Internal *, bool core_units = 0);
-  ~BChecker ();
+  Drupper (Internal *, File * f = 0, bool core_units = 0);
+  ~Drupper ();
 
   bool setup_options ();
 

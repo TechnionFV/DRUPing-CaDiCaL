@@ -35,7 +35,7 @@ Internal::Internal ()
   marked_failed (true),
   proof (0),
   checker (0),
-  bchecker (0),
+  drupper (0),
   tracer (0),
   opts (this),
 #ifndef QUIET
@@ -54,7 +54,7 @@ Internal::Internal ()
 }
 
 Internal::~Internal () {
-  if (bchecker) delete bchecker, bchecker = 0;
+  if (drupper) delete drupper, drupper = 0;
   for (const auto & c : clauses)
     delete_clause (c);
   if (proof) delete proof;
@@ -217,8 +217,8 @@ int Internal::cdcl_loop_with_inprocessing () {
     else res = decide ();                    // next decision
   }
 
-  if (res == 20 && bchecker) {
-    bchecker->trim ();
+  if (res == 20 && drupper) {
+    drupper->trim ();
   }
 
   if (stable) { STOP (stable);   report (']'); }
@@ -691,7 +691,7 @@ int Internal::lookahead () {
 void Internal::print_statistics () {
   stats.print (this);
   if (checker) checker->print_stats ();
-  if (bchecker) bchecker->print_stats ();
+  if (drupper) drupper->print_stats ();
 }
 
 /*------------------------------------------------------------------------*/

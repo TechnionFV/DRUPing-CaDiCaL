@@ -256,7 +256,6 @@ bool Internal::decompose_round () {
       LOG (c, "unit %d after substitution", clause[0]);
       assign_unit (clause[0]);
       mark_garbage (c);
-      // assert (0 && "notify bchecker");
       new_unit = true;
       garbage++;
     } else if (c->literals[0] != clause[0] ||
@@ -278,7 +277,12 @@ bool Internal::decompose_round () {
         proof->add_derived_clause (clause);
         proof->delete_clause (c);
       }
-      // assert (0 && "notify bchecker");
+      if (drupper) {
+        ///FIXME: Does this need a special handling?
+        Clause * c = new_clause (true);
+        drupper->add_derived_clause (c);
+        drupper->delete_clause (c);
+      }
       size_t l;
       for (l = 2; l < clause.size (); l++)
         c->literals[l] = clause[l];

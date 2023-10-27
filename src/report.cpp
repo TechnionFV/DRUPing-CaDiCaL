@@ -20,7 +20,7 @@ O  backtracked after phases reset to original phase
 F  backtracked after flipping phases
 #  backtracked after randomly setting phases
 B  backtracked after resetting to best phases
-W  backtracked after local search improved phases
+s  backtracked after local search improved phases
 b  blocked clause elimination
 G  before garbage collection
 C  after garbage collection

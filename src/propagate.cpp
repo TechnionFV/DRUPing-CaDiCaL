@@ -46,13 +46,13 @@ inline int Internal::assignment_level (int lit, Clause * reason) {
 
 /*------------------------------------------------------------------------*/
 
-inline void Internal::search_assign (int lit, Clause * reason) {
+void Internal::search_assign (int lit, Clause * reason) {
 
   if (level) require_mode (SEARCH);
 
   const int idx = vidx (lit);
   assert (!vals[idx]);
-  assert (bchecker || !flags (idx).eliminated () || reason == decision_reason);
+  assert (drupper || !flags (idx).eliminated () || reason == decision_reason);
   Var & v = var (idx);
   int lit_level;
 
@@ -63,12 +63,12 @@ inline void Internal::search_assign (int lit, Clause * reason) {
   else if (reason == decision_reason) lit_level = level, reason = 0;
   else if (opts.chrono) lit_level = assignment_level (lit, reason);
   else lit_level = level;
-  if (!bchecker && !lit_level) reason = 0;
+  if (!drupper && !lit_level) reason = 0;
 
   v.level = lit_level;
   v.trail = (int) trail.size ();
   v.reason = reason;
-  if (bchecker && reason) {
+  if (drupper && reason) {
     int * lits = reason->literals;
     for (int i = 0; i < reason->size && lits[0] != lit; i++) {
       if (lits[i] != lit) continue;
@@ -193,7 +193,7 @@ bool Internal::propagate () {
         // In principle we can ignore garbage binary clauses too, but that
         // would require to dereference the clause pointer all the time with
         //
-        if (bchecker && w.clause->garbage) { j--; continue; } // (*)
+        if (drupper && w.clause->garbage) { j--; continue; } // (*)
         //
         // This is too costly.  It is however necessary to produce correct
         // proof traces if binary clauses are traced to be deleted ('d ...'

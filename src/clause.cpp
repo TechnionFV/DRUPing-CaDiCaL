@@ -235,8 +235,8 @@ void Internal::delete_clause (Clause * c) {
     if (proof && c->size == 2)
       proof->delete_clause (c);
 
-    // if (bchecker && c->size == 2)
-    //   bchecker->delete_clause (c);
+    // if (drupper && c->size == 2)
+    //   drupper->delete_clause (c);
 
   }
   deallocate_clause (c);
@@ -268,8 +268,8 @@ void Internal::mark_garbage (Clause * c) {
   if (proof && c->size != 2)
     proof->delete_clause (c);
 
-  if (bchecker/* && c->size != 2*/)
-    bchecker->delete_clause (c);
+  if (drupper/* && c->size != 2*/)
+    drupper->delete_clause (c);
 
   assert (stats.current.total > 0);
   stats.current.total--;
@@ -306,8 +306,8 @@ void Internal::assign_original_unit (int lit, bool derived) {
   v.level = level;
   v.trail = (int) trail.size ();
   v.reason = 0;
-  if (bchecker)
-    bchecker->add_derived_unit_clause (lit, !derived);
+  if (drupper)
+    drupper->add_derived_unit_clause (lit, !derived);
   const signed char tmp = sign (lit);
   vals[idx] = tmp;
   vals[-idx] = -tmp;
@@ -374,8 +374,8 @@ void Internal::add_new_original_clause () {
     } else {
       Clause * c = new_clause (false);
       watch_clause (c);
-      if (bchecker && derived)
-        bchecker->add_derived_clause (c);
+      if (drupper && derived)
+        drupper->add_derived_clause (c);
     }
     if (derived) {
       external->check_learned_clause ();
@@ -383,13 +383,13 @@ void Internal::add_new_original_clause () {
         proof->add_derived_clause (clause);
         proof->delete_clause (original);
       }
-      if (bchecker)
-        bchecker->delete_clause (original, true);
+      if (drupper)
+        drupper->delete_clause (original, true);
     }
-    if (bchecker && !size && original.size ()) {
+    if (drupper && !size && original.size ()) {
         if (!derived)
-          bchecker->delete_clause (original, true);
-        bchecker->trim (true /* overcontrained */);
+          drupper->delete_clause (original, true);
+        drupper->trim (true /* overcontrained */);
     }
   }
   clause.clear ();
@@ -409,7 +409,7 @@ Clause * Internal::new_learned_redundant_clause (int glue) {
   external->check_learned_clause ();
   Clause * res = new_clause (true, glue);
   if (proof) proof->add_derived_clause (res);
-  if (bchecker) bchecker->add_derived_clause (res);
+  if (drupper) drupper->add_derived_clause (res);
   assert (watching ());
   watch_clause (res);
   return res;
@@ -421,7 +421,7 @@ Clause * Internal::new_hyper_binary_resolved_clause (bool red, int glue) {
   external->check_learned_clause ();
   Clause * res = new_clause (red, glue);
   if (proof) proof->add_derived_clause (res);
-  if (bchecker) bchecker->add_derived_clause (res);
+  if (drupper) drupper->add_derived_clause (res);
   assert (watching ());
   watch_clause (res);
   return res;
@@ -434,7 +434,7 @@ Clause * Internal::new_hyper_ternary_resolved_clause (bool red) {
   size_t size = clause.size ();
   Clause * res = new_clause (red, size);
   if (proof) proof->add_derived_clause (res);
-  if (bchecker) bchecker->add_derived_clause (res);
+  if (drupper) drupper->add_derived_clause (res);
   assert (!watching ());
   return res;
 }
@@ -448,7 +448,7 @@ Clause * Internal::new_clause_as (const Clause * orig) {
   Clause * res = new_clause (orig->redundant, new_glue);
   assert (!orig->redundant || !orig->keep || res->keep);
   if (proof) proof->add_derived_clause (res);
-  if (bchecker) bchecker->add_derived_clause (res);
+  if (drupper) drupper->add_derived_clause (res);
   assert (watching ());
   watch_clause (res);
   return res;
@@ -461,7 +461,7 @@ Clause * Internal::new_resolved_irredundant_clause () {
   external->check_learned_clause ();
   Clause * res = new_clause (false);
   if (proof) proof->add_derived_clause (res);
-  if (bchecker) bchecker->add_derived_clause (res);
+  if (drupper) drupper->add_derived_clause (res);
   assert (!watching ());
   return res;
 }

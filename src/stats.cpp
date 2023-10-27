@@ -306,11 +306,8 @@ void Checker::print_stats () {
 
 /*------------------------------------------------------------------------*/
 
-void BChecker::print_stats () {
-
-  if (!stats.deleted && !stats.deleted) return;
-
-  SECTION ("bchecker statistics");
+void Drupper::print_stats () {
+  SECTION ("drupper statistics");
 
   auto all = stats.deleted + stats.derived;
 
@@ -318,7 +315,7 @@ void BChecker::print_stats () {
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of all clauses", stats.deleted, percent (stats.deleted, all));
   MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of all clauses", stats.counterparts, percent (stats.counterparts, all));
   MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.units, percent (stats.units, all));
-  for (int i = 1; i <= stats.cores.size (); i++)
+  for (unsigned i = 1; i <= stats.cores.size (); i++)
     MSG ("phase %d core:        %11" PRId64 "   %10.2f %%  of all clauses", i, stats.cores[i-1], percent (stats.core, all));
 }
 

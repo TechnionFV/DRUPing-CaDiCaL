@@ -40,11 +40,11 @@ void Solver::transition_to_unknown_state () {
   if (state () == CONFIGURING) {
     LOG ("API leaves state %sCONFIGURING%s",
       tout.emph_code (), tout.normal_code ());
-    if (internal->opts.bcheck)
-      internal->bcheck ();
+    if (internal->opts.drup)
+      internal->drup ();
     if (internal->opts.check &&
         internal->opts.checkproof &&
-        !internal->opts.bcheck) {
+        !internal->opts.drup) {
       internal->check ();
     }
   } else if (state () == SATISFIED) {

@@ -7,7 +7,7 @@ namespace CaDiCaL {
 // local to this file).  It turns out that 'unassign' does not need a
 // specialization for 'probe' nor 'vivify' and thus it is shared.
 
-///NOTE: The inlining of Internal::unassign is removed as Internal::bchecker
+///NOTE: The inlining of Internal::unassign is removed as Internal::drupper
 // uses it.
 
 void Internal::unassign (int lit) {

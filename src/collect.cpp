@@ -42,7 +42,7 @@ void Internal::remove_falsified_literals (Clause * c) {
     if (fixed (*i) >= 0) num_non_false++;
   if (num_non_false < 2) return;
   if (proof) proof->flush_clause (c);
-  if (bchecker) bchecker->flush_clause (c);
+  if (drupper) drupper->flush_clause (c);
   literal_iterator j = c->begin ();
   for (i = j; i != end; i++) {
     const int lit = *j++ = *i, tmp = fixed (lit);
@@ -90,11 +90,10 @@ void Internal::protect_reasons () {
   assert (!protected_reasons);
   size_t count = 0;
   for (const auto & lit : trail) {
-    if (!bchecker && !active(lit)) continue;
-    ///TODO: assert (!flags(lit).eliminated ());
+    if (!drupper && !active(lit)) continue;
     assert (val (lit));
     Var & v = var (lit);
-    assert (bchecker || v.level > 0);
+    assert (drupper || v.level > 0);
     Clause * reason = v.reason;
     if (!reason) continue;
     LOG (reason, "protecting assigned %d reason %p", lit, (void*) reason);
@@ -116,10 +115,10 @@ void Internal::unprotect_reasons () {
   assert (protected_reasons);
   size_t count = 0;
   for (const auto & lit : trail) {
-    if (!bchecker && !active(lit)) continue;
+    if (!drupper && !active(lit)) continue;
     assert (val (lit));
     Var & v = var (lit);
-    assert (bchecker || v.level > 0);
+    assert (drupper || v.level > 0);
     Clause * reason = v.reason;
     if (!reason) continue;
     LOG (reason, "unprotecting assigned %d reason %p", lit, (void*) reason);
@@ -205,13 +204,13 @@ void Internal::update_reason_references () {
   LOG ("update assigned reason references");
   size_t count = 0;
   for (auto & lit : trail) {
-    if (!bchecker && !active(lit)) continue;
+    if (!drupper && !active(lit)) continue;
     Var & v = var (lit);
     Clause * c = v.reason;
     if (!c) continue;
     LOG (c, "updating assigned %d reason", lit);
     assert (c->reason);
-    if (bchecker && c->size == 1) continue;
+    if (drupper && c->size == 1) continue;
     assert (c->moved);
     Clause * d = c->copy;
     v.reason = d;
@@ -358,7 +357,7 @@ void Internal::copy_non_garbage_clauses () {
   flush_all_occs_and_watches ();
   update_reason_references ();
 
-  if (bchecker) bchecker->update_moved_counterparts ();
+  if (drupper) drupper->update_moved_counterparts ();
 
   // Replace and flush clause references in 'clauses'.
   //

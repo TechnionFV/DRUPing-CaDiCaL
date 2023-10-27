@@ -51,7 +51,7 @@ extern "C" {
 #include "block.hpp"
 #include "cadical.hpp"
 #include "checker.hpp"
-#include "bchecker.hpp"
+#include "drupper.hpp"
 #include "clause.hpp"
 #include "config.hpp"
 #include "contract.hpp"
@@ -207,7 +207,7 @@ struct Internal {
   Inc inc;                      // increments on limits
   Proof * proof;                // clausal proof observers if non zero
   Checker * checker;            // online proof checker observing proof
-  BChecker * bchecker;          // offline backward proof checker observing proof
+  Drupper * drupper;          // offline backward proof checker observing proof
   Tracer * tracer;              // proof to file tracer observing proof
   Options opts;                 // run-time options
   Stats stats;                  // statistics
@@ -1132,7 +1132,7 @@ struct Internal {
   void flush_trace ();          // Flush proof trace file.
   void trace (File *);          // Start write proof file.
   void check ();                // Enable online proof checking.
-  void bcheck ();               // Enable offline backward proof checking
+  void drup ();                 // Enable drupper
 
   // Dump to '<stdout>' as DIMACS for debugging.
   //
