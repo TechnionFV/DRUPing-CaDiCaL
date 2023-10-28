@@ -287,7 +287,8 @@ void Drupper::undo_trail_literal (int lit) {
 void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
 #ifndef NDEBUG
-  assert (trail_sz > 0 && trail_sz <= internal->trail.size());
+  assert (trail_sz > 0);
+  assert (trail_sz <= internal->trail.size());
   assert (c && is_on_trail (c));
 #endif
 
@@ -298,10 +299,10 @@ void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
   assert (internal->val (clit) > 0);
 #endif
 
-  while (internal->trail[trail_sz - 1] != clit)
+  while (internal->trail[--trail_sz] != clit)
   {
-    assert(trail_sz > 1);
-    int l = internal->trail[--trail_sz];
+    assert(trail_sz > 0);
+    int l = internal->trail[trail_sz];
 
     Clause * r = internal->var(l).reason;
     assert (r && r->literals[0] == l);
@@ -315,7 +316,7 @@ void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
         mark_core (internal->var(r->literals[j]).reason);
   }
 
-  assert(clit == internal->trail[--trail_sz]);
+  assert(clit == internal->trail[trail_sz]);
   undo_trail_literal (clit);
 }
 
