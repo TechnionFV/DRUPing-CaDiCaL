@@ -36,6 +36,10 @@ DrupperClause::DrupperClause (Clause * c)
     literals.push_back (*i);
 };
 
+bool DrupperClause::unit () const {
+  return literals.size () == 1;
+}
+
 /*------------------------------------------------------------------------*/
 
 Drupper::Drupper (Internal * i, File * f, bool core_units)
@@ -57,8 +61,8 @@ Drupper::Drupper (Internal * i, File * f, bool core_units)
 Drupper::~Drupper () {
   LOG ("DRUPPER delete");
   isolate = true;
-  for (const auto & bc : drupper_clauses)
-    delete (DrupperClause *) bc;
+  for (const auto & dc : drupper_clauses)
+    delete (DrupperClause *) dc;
   for (const auto & c : unit_clauses)
     delete [] (char*) c;
 }
@@ -128,15 +132,29 @@ DrupperClause * Drupper::insert (Clause * c) {
   vector<int> lits;
   for (int  i = 0; i < c->size; i++)
     lits.push_back (c->literals[i]);
-  DrupperClause * bc = new DrupperClause (lits);
-  drupper_clauses.push_back (bc);
-  return bc;
+  DrupperClause * dc = new DrupperClause (lits);
+  drupper_clauses.push_back (dc);
+  return dc;
 }
 
 DrupperClause * Drupper::insert (const vector<int> & lits) {
-  DrupperClause * bc = new DrupperClause (lits);
-  drupper_clauses.push_back (bc);
-  return bc;
+  DrupperClause * dc = new DrupperClause (lits);
+  drupper_clauses.push_back (dc);
+  return dc;
+}
+
+/*------------------------------------------------------------------------*/
+
+void Drupper::set_counterpart (DrupperClause * dc, Clause * c) {
+  assert (!dc->counterpart);
+  dc->counterpart = c;
+  stats.counterparts++;
+}
+
+void Drupper::reset_counterpart (DrupperClause * dc) {
+  assert (dc->counterpart);
+  dc->counterpart = 0;
+  stats.counterparts--;
 }
 
 /*------------------------------------------------------------------------*/
@@ -158,8 +176,8 @@ bool Drupper::trivially_satisfied (const vector <int> & c) {
 
 ///TODO: Consider using lazy drupper clause allocation: allocate once the internal
 // clause is discarded from memory.
-void Drupper::append_lemma (DrupperClause * bc, Clause * c, bool deleted = false) {
-  assert (bc->revive_at < 0);
+void Drupper::append_lemma (DrupperClause * dc, Clause * c, bool deleted = false) {
+  assert (dc->revive_at < 0);
   if (deleted) stats.deleted++;
   else stats.derived++;
   if (c) {
@@ -169,19 +187,18 @@ void Drupper::append_lemma (DrupperClause * bc, Clause * c, bool deleted = false
         if (order.cached ()) {
           int i = order.remove ();
           assert (proof[i]->counterpart == c);
-          proof[i]->counterpart = 0;
-          bc->revive_at = i;
+          reset_counterpart (proof[i]);
+          dc->revive_at = i;
         }
         assert (!order.cached ());
       }
     } else {
       order.cache (proof.size ());
-      stats.counterparts++;
     }
   }
-  bc->deleted = deleted;
-  bc->counterpart = deleted ? 0 : c;
-  proof.push_back (bc);
+  dc->deleted = deleted;
+  set_counterpart (dc, deleted ? 0 : c);
+  proof.push_back (dc);
 }
 
 void Drupper::append_failed (const vector<int> & c) {
@@ -193,27 +210,27 @@ void Drupper::append_failed (const vector<int> & c) {
 }
 
 void Drupper::revive_internal_clause (int i) {
-  assert (!proof[i]->counterpart && proof[i]->deleted);
-  DrupperClause * bc = proof[i];
-  assert (!bc->unit ());
+  assert (i >= 0 && i < proof.size ());
+  DrupperClause * dc = proof[i];
+  assert (!dc->unit () && !dc->counterpart && dc->deleted);
   vector<int> & clause = internal->clause;
   assert (clause.empty());
-  for (int j : bc->literals)
+  for (int j : dc->literals)
     clause.push_back (j);
   Clause * c = internal->new_clause (true );
   clause.clear();
   internal->watch_clause (c);
-  if (bc->revive_at >= 0) {
-    int j = bc->revive_at;
+  if (dc->revive_at >= 0) {
+    int j = dc->revive_at;
 #ifndef NDEBUG
     assert (j < i);
     assert (proof[j]->revive_at < 0);  // Are chains even possible?
     assert (!proof[j]->deleted && !proof[j]->counterpart);
 #endif
-    proof[j]->counterpart = c;
+    set_counterpart (proof[j], c);
   }
-  proof[i]->counterpart = c;
-  if (bc->failed)
+  set_counterpart (proof[i], c);
+  if (dc->failed)
     mark_core (c);
 }
 
@@ -350,9 +367,9 @@ void Drupper::mark_conflict (bool overconstrained) {
       // Revive it and mark it as the conflict clause.
       int i = proof.size () - 1;
       assert (i >= 0 && proof[i]->deleted);
-      DrupperClause * bc = proof[i];
-      if (bc->unit ())
-        proof[i]->counterpart = new_unit_clause (bc->literals[0], false);
+      DrupperClause * dc = proof[i];
+      if (dc->unit ())
+        set_counterpart (proof[i], new_unit_clause (dc->literals[0], false));
       else
         revive_internal_clause (i);
       conflict = proof[i]->counterpart;
@@ -534,13 +551,13 @@ void Drupper::clear_failing_assumptions (const unsigned proof_sz) {
 
 void Drupper::reallocate () {
   assert (isolate);
-  for (DrupperClause * bc : proof) {
-    Clause * c = bc->counterpart;
-    if (!bc->deleted) {
+  for (DrupperClause * dc : proof) {
+    Clause * c = dc->counterpart;
+    if (!dc->deleted) {
       assert (c);
-      assert (bc->revive_at < 0);
-      if (bc->marked_garbage) {
-        bc->marked_garbage = c->garbage = false;
+      assert (dc->revive_at < 0);
+      if (dc->marked_garbage) {
+        dc->marked_garbage = c->garbage = false;
         internal->watch_clause (c);
       } else if (c->garbage) {
         assert (c->size == 2);
@@ -549,14 +566,14 @@ void Drupper::reallocate () {
     }
   }
   for (int i = proof.size () - 1; i >= 0; i--) {
-    DrupperClause * bc = proof[i];
-    Clause * c = bc->counterpart;
-    if (bc->deleted) {
+    DrupperClause * dc = proof[i];
+    Clause * c = dc->counterpart;
+    if (dc->deleted) {
       assert (c && !c->garbage);
-      bc->counterpart = 0;
-      if (bc->revive_at >= 0)
-        proof[bc->revive_at]->counterpart = 0;
-      if (bc->unit ()) continue;
+      reset_counterpart (dc);
+      if (dc->revive_at >= 0)
+        reset_counterpart (proof[dc->revive_at]);
+      if (dc->unit ()) continue;
       internal->mark_garbage (c);
     }
   }
@@ -579,10 +596,10 @@ void Drupper::reconsruct (const unsigned proof_sz) {
 void Drupper::check_environment () const {
   assert (proof.size() == unsigned(stats.derived + stats.deleted));
   for (unsigned i = 0; i < proof.size(); i++) {
-    DrupperClause * bc = proof[i];
-    Clause * c = bc->counterpart;
-    assert (bc && (!bc->deleted || !c));
-    if (!bc->deleted && c && c->garbage) {
+    DrupperClause * dc = proof[i];
+    Clause * c = dc->counterpart;
+    assert (dc && (!dc->deleted || !c));
+    if (!dc->deleted && c && c->garbage) {
       ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
       // clauses as deleted (produce 'd ...' lines) as soon they are marked
       // garbage.
@@ -626,9 +643,9 @@ void Drupper::dump_clause (const Clause * c) const {
   }
 }
 
-void Drupper::dump_clause (const DrupperClause * bc) const {
-  assert (bc);
-  for (int i : bc->literals)
+void Drupper::dump_clause (const DrupperClause * dc) const {
+  assert (dc);
+  for (int i : dc->literals)
     printf ("%d ", i);
   printf ("\n");
 }
@@ -788,8 +805,7 @@ void Drupper::strengthen_clause (Clause * c, int lit) {
   auto & order = cp_ordering[c];
   if (order.cached ()) {
     revive_at = order.remove ();
-    proof[revive_at]->counterpart = 0;
-    stats.counterparts--;
+    reset_counterpart (proof[revive_at]);
   }
   append_lemma (insert (strengthened), c);
   append_lemma (insert (c), 0, true);
@@ -815,8 +831,7 @@ void Drupper::flush_clause (Clause * c) {
   if (order.cached ()) {
     revive_at = order.remove ();
     assert (proof[revive_at]->counterpart == c);
-    proof[revive_at]->counterpart = 0;
-    stats.counterparts--;
+    reset_counterpart (proof[revive_at]);
   }
   append_lemma (insert (flushed), c);
   append_lemma (insert (c), 0, true);
@@ -896,7 +911,8 @@ void Drupper::update_moved_counterparts () {
 #endif
 
     new_order.cache (old_order.remove ());
-    proof[i]->counterpart = c->copy;
+    reset_counterpart (proof[i]);
+    set_counterpart (proof[i], c->copy);
   }
   STOP (drupping);
 }

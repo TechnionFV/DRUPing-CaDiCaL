@@ -55,9 +55,7 @@ public:
   DrupperClause (vector<int> c);
   DrupperClause (Clause * c);
   ~DrupperClause () = default;
-  bool unit () const {
-    return literals.size () == 1;
-  }
+  bool unit () const;
 };
 
 class Order {
@@ -121,8 +119,11 @@ class Drupper {
   DrupperClause * insert (Clause *);
   DrupperClause * insert (const vector<int> &);
 
+  void set_counterpart (DrupperClause * dc, Clause * c);
+  void reset_counterpart (DrupperClause *);
+
   bool trivially_satisfied (const vector <int> & c);
-  void append_lemma (DrupperClause * bc, Clause * c, bool deleted);
+  void append_lemma (DrupperClause * dcפ, Clause * c, bool deleted);
   void append_failed (const vector<int>  & c);
   void revive_internal_clause (int);
   void stagnate_internal_clause (const int);
