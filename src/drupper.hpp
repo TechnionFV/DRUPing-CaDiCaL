@@ -9,8 +9,8 @@ namespace CaDiCaL {
 /*-----------------------------------------------------------------------------------
 
 The code implements the algorithm introduced in "DRUPing For Interpolant", a paper by
-Arie Gurfinkel and Yakir Vizel. Drupper allows DRUP-based proof trimming, validation,
-interpolants and core extraction enabled by 'opts.drup'.
+  Arie Gurfinkel and Yakir Vizel. Drupper allows DRUP-based proof trimming, validation,
+  interpolants and core extraction enabled by 'opts.drup'.
 
 Limitations:
   - Allowing other proof observers/checkers in parallel:

@@ -74,12 +74,12 @@ bool Drupper::setup_options () {
   updated |= opts.chrono;
   updated |= opts.vivify;
   updated |= opts.probe;
-  updated |= opts.condition;
+  // updated |= opts.condition;
   updated |= opts.compact;
   opts.chrono = 0;
   opts.vivify = 0;
   opts.probe = 0;
-  opts.condition = 0;
+  // opts.condition = 0;
   opts.compact = 0;
   return updated;
 }
@@ -215,8 +215,11 @@ void Drupper::revive_internal_clause (int i) {
   assert (!dc->unit () && !dc->counterpart && dc->deleted);
   vector<int> & clause = internal->clause;
   assert (clause.empty());
-  for (int j : dc->literals)
+  for (int j : dc->literals) {
+    if (internal->flags (j).eliminated ())
+      internal->reactivate (j);
     clause.push_back (j);
+  }
   Clause * c = internal->new_clause (true );
   clause.clear();
   internal->watch_clause (c);
@@ -937,7 +940,7 @@ bool Drupper::trim (bool overconstrained) {
     mark_failed_conflict ();
   }
 
-  START (drupping);
+  START (trimming);
   LOG ("DRUPPER starting validation");
 
   clear_conflict ();
@@ -992,7 +995,7 @@ bool Drupper::trim (bool overconstrained) {
   unmark_core_clauses ();
   reconsruct (proof_sz);
 
-  STOP (drupping);
+  STOP (trimming);
   return true;
 }
 

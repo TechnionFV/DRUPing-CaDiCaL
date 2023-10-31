@@ -149,6 +149,7 @@ void Internal::elim_propagate (Eliminator & eliminator, int root) {
         mark_garbage (c);
       } else if (!unit) {
         LOG ("empty clause during elimination propagation of %d", lit);
+        internal->conflict = c;
         learn_empty_clause ();
         break;
       } else if (unit != INT_MIN) {
@@ -308,6 +309,7 @@ bool Internal::resolve_clauses (Eliminator & eliminator,
   if (!size) {
     clause.clear ();
     LOG ("empty resolvent");
+    internal->conflict = d;
     learn_empty_clause ();
     return false;
   }
