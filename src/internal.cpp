@@ -217,14 +217,15 @@ int Internal::cdcl_loop_with_inprocessing () {
     else res = decide ();                    // next decision
   }
 
-  if (res == 20 && drupper) {
-    drupper->trim ();
-  }
 
   if (stable) { STOP (stable);   report (']'); }
   else        { STOP (unstable); report ('}'); }
 
   STOP (search);
+
+  if (res == 20 && drupper) {
+    drupper->trim ();
+  }
 
   return res;
 }

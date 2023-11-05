@@ -108,6 +108,7 @@ Clause * Internal::new_clause (bool red, int glue) {
   c->vivified = false;
   c->vivify = false;
   c->core = false;
+  c->drup_idx = 0;
   c->used = 0;
 
   c->glue = glue;

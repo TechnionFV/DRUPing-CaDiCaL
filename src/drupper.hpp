@@ -27,18 +27,13 @@ Limitations:
     In the interest of compatibility with chronological backtracking, adjustments to
     the implementation will be considered in the future.
 
-  - Not all [in/pre]processing techniques are compatible with this feature:
-    1) probing / advanced probing / lookahead: isn't resolution based.
-    2) conditioning: is this another version of BCE (Bounded Clause Elimination)?
-    3) compacting: this feature is not compatible.
-       * drupper will revive clauses with wrong mapping.
-       * fixed literals are literals that drupper wants to keep.
-       * even if we disable reducing/garbage collection ... would this be still be worth it?
-    4) subsuming: ok (at least empirically) but does it even work without vivcation? I think so...
-    5) vivication: changes order of literals (violated reason_of_lit[0] == lit).
-    6) eliminating: problem with - learn_empty_clause (). Passed validation but need to correctly mark core
+  - Compatible [in/pre]processing techniques:
+    1) probing / advanced probing / lookahead: not resolution based.
+    2) conditioning / blocking: is this some sort of of BCE?
+    3) compacting: variables are revived in the process.
+    4) vivication: vivified (reason) clause must maintain first literal in its place.
 
-  - Disable propagating binary clauses as soon as they are marked as garbage.
+  - Avoid propagating binary clauses as soon as they are marked as garbage.
 
 -----------------------------------------------------------------------------------*/
 
@@ -46,33 +41,16 @@ class Clause;
 
 class DrupperClause {
 public:
-  bool marked_garbage;
-  int revive_at;
-  bool failed;
-  bool deleted;
+  bool marked_garbage:1;
+  unsigned revive_at;
+  bool failed:1;
+  bool deleted:1;
   Clause * counterpart;
   vector<int> literals;
-  DrupperClause (vector<int> c);
-  DrupperClause (Clause * c);
+  DrupperClause (bool deletion = false, bool failing = false);
+  DrupperClause (vector<int> c, bool deletion = false, bool failing = false);
+  DrupperClause (Clause * c, bool deletion = false, bool failing = false);
   ~DrupperClause () = default;
-  bool unit () const;
-};
-
-class Order {
-  int i;
-public:
-  Order () : i (-1) {}
-  bool cached () const { return i >= 0; }
-  void cache (int i_) {
-    assert (!cached () && i_ >= 0);
-    i = i_;
-  }
-  int remove () {
-    assert (cached ());
-    int i_ = i;
-    i = -1;
-    return i_;
-  }
 };
 
 struct lock_scope {
@@ -100,10 +78,6 @@ class Drupper {
   //
   vector<DrupperClause *> proof;
 
-  // for each counterpart 'cp', 'cp_ordering[cp]' contains matching stack index
-  //
-  unordered_map<Clause *, Order> cp_ordering;
-
   // stack containig clauses of size 1
   //
   vector<Clause *> unit_clauses;
@@ -115,32 +89,27 @@ class Drupper {
   bool validating;
   File * file;
 
-  vector<DrupperClause *> drupper_clauses;
-  DrupperClause * insert (Clause *);
-  DrupperClause * insert (const vector<int> &);
-
   void set_counterpart (DrupperClause * dc, Clause * c);
   void reset_counterpart (DrupperClause *);
 
-  bool trivially_satisfied (const vector <int> & c);
-  void append_lemma (DrupperClause * dcפ, Clause * c, bool deleted);
-  void append_failed (const vector<int>  & c);
-  void revive_internal_clause (int);
-  void stagnate_internal_clause (const int);
+  bool trivially_satisfied (const vector <int> &);
+  void append_lemma (DrupperClause * dc, Clause * c);
+  void append_failed (const vector<int>  &);
+  void append_updated (Clause *);
+  void revive_clause (int);
+  void stagnate_clause (const int);
   void reactivate_fixed (int);
-  void reactivate_eliminated (int);
 
   void shrink_internal_trail (const unsigned);
-  void clear_conflict ();
+  void clean_conflict ();
 
-  void undo_trail_literal (int);
+  void undo_trail_literal (const int);
   void undo_trail_core (Clause * c, unsigned & trail_sz);
   bool is_on_trail (Clause *);
 
   void mark_core (Clause *);
-  void mark_conflict_lit (int l);
+  void mark_conflict_lit (const int l);
   void mark_conflict (bool overconstarined);
-  void mark_failed_conflict ();
 
   void assume_negation (const Clause *);
   bool propagate_conflict ();
@@ -149,7 +118,7 @@ class Drupper {
   void mark_core_trail_antecedents ();
   void unmark_core_clauses ();
   void restore_trail ();
-  void clear_failing_assumptions (const unsigned);
+  void clear_failing (const unsigned);
   void reallocate ();
   void reconsruct (unsigned);
 
@@ -190,11 +159,8 @@ public:
   void add_derived_clause (Clause *);
   void add_derived_unit_clause (const int, bool original = false);
   void add_derived_empty_clause ();
-
   void add_failing_assumption (const vector<int> &);
-
-  void strengthen_clause (Clause * c, int lit);
-  void flush_clause (Clause *);
+  void add_updated_clause (Clause *);
 
   void delete_clause (const vector<int> &, bool original = false);
   void delete_clause (Clause *);

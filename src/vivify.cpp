@@ -574,7 +574,10 @@ void Internal::vivify_clause (Vivifier & vivifier, Clause * c) {
     return;
   }
 
-  sort (sorted.begin (), sorted.end (), vivify_more_noccs (this));
+  if (drupper)
+    sort (sorted.begin () + 1, sorted.end (), vivify_more_noccs (this));
+  else
+    sort (sorted.begin (), sorted.end (), vivify_more_noccs (this));
 
   // The actual vivification checking is performed here, by assuming the
   // negation of each of the remaining literals of the clause in turn and
@@ -929,7 +932,10 @@ void Internal::vivify_round (bool redundant_mode, int64_t propagation_limit) {
     // literals first (as explained above in the example at '@2').  This
     // is also needed in the prefix subsumption checking below.
     //
-    sort (c->begin (), c->end (), vivify_more_noccs (this));
+    if (drupper)
+      sort (c->begin () + 1, c->end (), vivify_more_noccs (this));
+    else
+      sort (c->begin (), c->end (), vivify_more_noccs (this));
 
     vivifier.schedule.push_back (c);
   }

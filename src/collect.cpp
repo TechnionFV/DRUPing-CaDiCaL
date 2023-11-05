@@ -42,7 +42,7 @@ void Internal::remove_falsified_literals (Clause * c) {
     if (fixed (*i) >= 0) num_non_false++;
   if (num_non_false < 2) return;
   if (proof) proof->flush_clause (c);
-  if (drupper) drupper->flush_clause (c);
+  if (drupper) drupper->add_updated_clause (c);
   literal_iterator j = c->begin ();
   for (i = j; i != end; i++) {
     const int lit = *j++ = *i, tmp = fixed (lit);

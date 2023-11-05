@@ -44,7 +44,11 @@ struct Clause {
   unsigned used:2;    // resolved in conflict analysis since last 'reduce'
   bool vivified:1;    // clause already vivified
   bool vivify:1;      // clause scheduled to be vivified
-  bool core:1;        // clause has been found to be core during backward validation.
+
+  // Drupper
+  //
+  bool core:1;        // clause has been found to be core since last 'trim'.
+  unsigned drup_idx;  // reverse mapping used by drupper.
 
   // The glucose level ('LBD' or short 'glue') is a heuristic value for the
   // expected usefulness of a learned clause, where smaller glue is consider

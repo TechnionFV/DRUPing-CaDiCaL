@@ -43,8 +43,12 @@ PROFILE(backward,3) \
 PROFILE(block,2) \
 PROFILE(bump,4) \
 PROFILE(checking,2) \
-PROFILE(drupping,2) \
-PROFILE(trimming,2) \
+PROFILE(drup_trim, 2) \
+PROFILE(drup_revive, 2) \
+PROFILE(drup_analyze, 2) \
+PROFILE(drup_inprocess, 2) \
+PROFILE(drup_propagate, 2) \
+PROFILE(drup_reconstruct, 2) \
 PROFILE(cdcl,1) \
 PROFILE(collect,3) \
 PROFILE(compact,3) \
