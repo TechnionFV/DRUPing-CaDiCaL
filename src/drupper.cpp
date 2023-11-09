@@ -48,7 +48,7 @@ DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
 Drupper::Drupper (Internal * i, File * f, bool core_units)
 :
   internal (i), failed_constraint (0),
-  core_units (core_units), isolate (0),
+  core_units (core_units), isolated (0),
   validating (0), file (f)
 {
   LOG ("DRUPPER new");
@@ -63,7 +63,7 @@ Drupper::Drupper (Internal * i, File * f, bool core_units)
 
 Drupper::~Drupper () {
   LOG ("DRUPPER delete");
-  isolate = true;
+  isolated = true;
   for (const auto & dc : proof)
     delete (DrupperClause *) dc;
   for (const auto & c : unit_clauses)
@@ -286,7 +286,7 @@ void Drupper::undo_trail_literal (const int lit) {
 }
 
 void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
-
+  START (drup_undo_trail);
 #ifndef NDEBUG
   assert (trail_sz > 0);
   assert (trail_sz <= internal->trail.size());
@@ -319,6 +319,7 @@ void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
   assert(clit == internal->trail[trail_sz]);
   undo_trail_literal (clit);
+  STOP (drup_undo_trail);
 }
 
 
@@ -484,6 +485,7 @@ void Drupper::conflict_analysis_core () {
 /*------------------------------------------------------------------------*/
 
 void Drupper::mark_core_trail_antecedents () {
+  START (drup_mark_antecedents);
   for (int i = internal->trail.size() - 1; i >= 0; i--) {
     int lit = internal->trail[i];
     Clause * reason = internal->var (lit).reason;
@@ -496,6 +498,7 @@ void Drupper::mark_core_trail_antecedents () {
       ///TODO: set internal->propagated2
     }
   }
+  STOP (drup_mark_antecedents);
 }
 
 void Drupper::unmark_core_clauses () {
@@ -510,7 +513,7 @@ void Drupper::unmark_core_clauses () {
 }
 
 void Drupper::restore_trail () {
-  assert (isolate);
+  assert (isolated);
   // Restoring the trail is done with respect to the order of literals.
   // Each unit is allocated in the same order it's pushed the trail.
   for (Clause * c : unit_clauses) {
@@ -539,7 +542,7 @@ void Drupper::clear_failing (const unsigned proof_sz) {
 }
 
 void Drupper::reallocate () {
-  assert (isolate);
+  assert (isolated);
   for (DrupperClause * dc : proof) {
     Clause * c = dc->counterpart;
     if (!dc->deleted) {
@@ -570,11 +573,12 @@ void Drupper::reallocate () {
 
 void Drupper::reconsruct (const unsigned proof_sz) {
   START (drup_reconstruct);
-  lock_scope isolated (isolate);
+  lock_scope isolate (isolated);
   unmark_core_clauses ();
   reallocate ();
   clear_failing (proof_sz);
   restore_trail ();
+  internal->flush_all_occs_and_watches ();
   STOP (drup_reconstruct);
 }
 
@@ -744,7 +748,7 @@ void Drupper::dump_core () const {
 /*------------------------------------------------------------------------*/
 
 void Drupper::add_derived_clause (Clause * c) {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   LOG (c, "DRUPPER derived clause notification");
@@ -753,7 +757,7 @@ void Drupper::add_derived_clause (Clause * c) {
 }
 
 void Drupper::add_derived_unit_clause (const int lit, bool original) {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   LOG ({lit}, "DRUPPER derived clause notification");
@@ -771,7 +775,7 @@ void Drupper::add_derived_unit_clause (const int lit, bool original) {
 }
 
 void Drupper::add_derived_empty_clause () {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   LOG ("DRUPPER derived empty clause notification");
@@ -779,7 +783,7 @@ void Drupper::add_derived_empty_clause () {
 }
 
 void Drupper::add_failing_assumption (const vector<int> & c) {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   if (c.size () > 1) {
     // See ../interesting_tests/assump_and_constraint
@@ -792,7 +796,7 @@ void Drupper::add_failing_assumption (const vector<int> & c) {
 }
 
 void Drupper::add_updated_clause (Clause * c) {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating && c);
   START (drup_inprocess);
   LOG (c, "DRUPPER updated");
@@ -811,7 +815,7 @@ void Drupper::add_updated_clause (Clause * c) {
 /*------------------------------------------------------------------------*/
 
 void Drupper::delete_clause (const vector<int> & c, bool original) {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   LOG (c, "DRUPPER clause deletion notification");
@@ -849,7 +853,7 @@ void Drupper::delete_clause (const vector<int> & c, bool original) {
 }
 
 void Drupper::delete_clause (Clause * c) {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   LOG (c, "DRUPPER clause deletion notification");
@@ -860,7 +864,7 @@ void Drupper::delete_clause (Clause * c) {
 /*------------------------------------------------------------------------*/
 
 void Drupper::update_moved_counterparts () {
-  if (isolate) return;
+  if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   for (unsigned i = 0; i < proof.size(); i++) {
@@ -886,12 +890,11 @@ void Drupper::update_moved_counterparts () {
 /*------------------------------------------------------------------------*/
 
 bool Drupper::trim (bool overconstrained) {
-
   START (drup_trim);
   LOG ("DRUPPER trim");
 
   save_scope<bool> recover_unsat (internal->unsat);
-  assert (!validating && !isolate && !setup_options ());
+  assert (!validating && !isolated && !setup_options ());
   check_environment ();
 
   // Mark the conflict and its reasons as core.
@@ -919,6 +922,7 @@ bool Drupper::trim (bool overconstrained) {
     if (is_on_trail (c)) {
       if (core_units) mark_core (c);
       undo_trail_core (c, trail_sz);
+      internal->report ('m');
     }
 
     stagnate_clause (i);
@@ -932,6 +936,8 @@ bool Drupper::trim (bool overconstrained) {
       clean_conflict ();
     }
   }
+
+  internal->report ('M');
 
   shrink_internal_trail (trail_sz);
   mark_core_trail_antecedents ();

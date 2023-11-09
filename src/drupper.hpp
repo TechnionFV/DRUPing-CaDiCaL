@@ -85,7 +85,7 @@ class Drupper {
 
   Clause * failed_constraint;
   bool core_units;
-  bool isolate;
+  bool isolated;
   bool validating;
   File * file;
 
