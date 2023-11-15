@@ -88,6 +88,7 @@ class Drupper {
   bool isolated;
   bool validating;
   File * file;
+  int solves;
 
   void set_counterpart (DrupperClause * dc, Clause * c);
   void reset_counterpart (DrupperClause *);

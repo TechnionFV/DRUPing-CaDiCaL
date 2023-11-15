@@ -50,6 +50,7 @@ PROFILE(drup_inprocess, 2) \
 PROFILE(drup_propagate, 2) \
 PROFILE(drup_undo_trail, 2) \
 PROFILE(drup_reconstruct, 2) \
+PROFILE(drup_repropagate, 2) \
 PROFILE(drup_mark_antecedents, 2) \
 PROFILE(cdcl,1) \
 PROFILE(collect,3) \

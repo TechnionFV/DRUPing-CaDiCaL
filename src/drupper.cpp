@@ -49,7 +49,7 @@ Drupper::Drupper (Internal * i, File * f, bool core_units)
 :
   internal (i), failed_constraint (0),
   core_units (core_units), isolated (0),
-  validating (0), file (f)
+  validating (0), file (f), solves (0)
 {
   LOG ("DRUPPER new");
 
@@ -403,15 +403,20 @@ bool Drupper::propagate_conflict () {
   assert(!internal->conflict);
   if (internal->propagate ())
   {
-    // If propagate fails, it may be due to incrementality and
-    // missing units. re-propagate the entire trail.
-    ///TODO: Understand what exactly happens and why is this needed.
-    // A good point to start: test/trace/reg0048.trace.
+    START (drup_repropagate);
+    {
+      // If propagate fails, it may be due to incrementality and
+      // missing units. re-propagate the entire trail.
+      ///TODO: Understand what exactly happens and why is this needed.
+      // A good point to start: test/trace/reg0048.trace.
+      assert (solves);
+    }
     internal->propagated = 0;
     if (internal->propagate ()) {
       internal->backtrack ();
       return false;
     }
+    STOP (drup_repropagate);
   }
   STOP (drup_propagate);
   return true;
@@ -478,6 +483,7 @@ void Drupper::conflict_analysis_core () {
       }
     }
   }
+
   assert (seen.empty ());
   STOP (drup_analyze);
 }
@@ -893,6 +899,8 @@ bool Drupper::trim (bool overconstrained) {
   START (drup_trim);
   LOG ("DRUPPER trim");
 
+  solves++;
+
   save_scope<bool> recover_unsat (internal->unsat);
   assert (!validating && !isolated && !setup_options ());
   check_environment ();
@@ -905,6 +913,8 @@ bool Drupper::trim (bool overconstrained) {
   // 'trail_sz' is used for lazy shrinking of the trail.
   unsigned trail_sz = internal->trail.size();
   lock_scope trim_scope (validating);
+
+  internal->flush_all_occs_and_watches ();
 
   // Main trimming loop
   for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
