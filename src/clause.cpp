@@ -388,9 +388,9 @@ void Internal::add_new_original_clause () {
         drupper->delete_clause (original, true);
     }
     if (drupper && !size && original.size ()) {
-        if (!derived)
-          drupper->delete_clause (original, true);
-        drupper->trim (true /* overcontrained */);
+      if (!derived)
+        drupper->delete_clause (original, true);
+      drupper->trim (true /* overcontrained */);
     }
   }
   clause.clear ();

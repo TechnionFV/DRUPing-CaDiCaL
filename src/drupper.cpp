@@ -490,6 +490,15 @@ void Drupper::conflict_analysis_core () {
 
 /*------------------------------------------------------------------------*/
 
+static void collect (Internal * internal) {
+  if (!internal->protected_reasons)
+    internal->protect_reasons ();
+  internal->delete_garbage_clauses ();
+  internal->unprotect_reasons ();
+}
+
+/*------------------------------------------------------------------------*/
+
 void Drupper::mark_core_trail_antecedents () {
   START (drup_mark_antecedents);
   for (int i = internal->trail.size() - 1; i >= 0; i--) {
@@ -584,7 +593,7 @@ void Drupper::reconsruct (const unsigned proof_sz) {
   reallocate ();
   clear_failing (proof_sz);
   restore_trail ();
-  internal->flush_all_occs_and_watches ();
+  collect (internal);
   STOP (drup_reconstruct);
 }
 
@@ -820,38 +829,52 @@ void Drupper::add_updated_clause (Clause * c) {
 
 /*------------------------------------------------------------------------*/
 
+// Must be called at a point in which no literals are marked!
+static vector<int> remove_duplicates (Internal * internal, const vector <int> & c) {
+  vector<int> unique;
+  for (int lit : c) {
+    if (internal->marked (lit))
+      continue;
+    internal->mark (lit);
+    unique.push_back (lit);
+  }
+  for (int lit : unique)
+    internal->unmark (lit);
+  return unique;
+}
+
+static void swap_falsified_literals_right (Internal * internal, vector <int> & c) {
+  int sz = c.size ();
+  for (int i = 0; i < sz; i++) {
+    if (internal->val (c[i]) < 0) {
+      int bl = c[--sz];
+      c[sz] = c[i];
+      c[i] = bl;
+    }
+  }
+}
+
+/*------------------------------------------------------------------------*/
+
 void Drupper::delete_clause (const vector<int> & c, bool original) {
   if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   LOG (c, "DRUPPER clause deletion notification");
-  vector<int> modified;
-  // remoeve duplicates. if there is only one unique literal, skip.
-  for (int lit : c) {
-    if (internal->marked (lit))
-      continue;
-    internal->mark (lit);
-    modified.push_back (lit);
-  }
-  for (int lit : modified)
-    internal->unmark (lit);
-  if (modified.size () == c.size () || modified.size () > 1) {
+  // remove duplicates. if there is only one unique literal,
+  // skip it unless it's a falsified original then we cache it.
+  vector<int> modified = remove_duplicates (internal, c);
+  bool falsified_original = modified.size () == 1 && internal->val (c[0]) < 0;
+  if (modified.size () == c.size () || modified.size () > 1 || falsified_original) {
     if (original) {
       ///NOTE: This is an original clause that has been reduced to an irredundant
-      // dervied clause after removing all falsified literals. This clause wasn't
-      // allocated in memory. However, it needs to be revived for correct core
+      // dervied clause after removing all its falsified literals. This clause was
+      // not allocated in memory. However, it needs to be revived for correct core
       // extraction and complete validation.
-      // Moving the falsified literals to the end of the clause is crucial for
-      // watching this clause after it is revived in the future as we want to watch
-      // the unassigned literals.
-      int sz = modified.size ();
-      for (int i = 0; i < sz; i++) {
-        if (internal->val (c[i]) < 0) {
-          int bl = modified[--sz];
-          modified[sz] = modified[i];
-          modified[i] = bl;
-        }
-      }
+      // Moving the falsified literals to the end of the clause is crucial as we
+      // need to watch the first two unassigned literals of this clause once it is
+      // revived.
+      swap_falsified_literals_right (internal, modified);
     }
     append_lemma (new DrupperClause (modified, true), 0);
   }
@@ -914,7 +937,7 @@ bool Drupper::trim (bool overconstrained) {
   unsigned trail_sz = internal->trail.size();
   lock_scope trim_scope (validating);
 
-  internal->flush_all_occs_and_watches ();
+  collect (internal);
 
   // Main trimming loop
   for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
