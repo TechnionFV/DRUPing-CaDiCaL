@@ -68,6 +68,7 @@ Drupper::~Drupper () {
     delete (DrupperClause *) dc;
   for (const auto & c : unit_clauses)
     delete [] (char*) c;
+  delete file;
 }
 /*------------------------------------------------------------------------*/
 
