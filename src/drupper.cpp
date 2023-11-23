@@ -18,15 +18,13 @@ void Internal::drup () {
 
 DrupperClause::DrupperClause (bool deletion, bool failing)
 :
-  marked_garbage (false), revive_at (0),
-  failed (failing), deleted (deletion), counterpart (0)
+  revive_at (0), failed (failing), deleted (deletion), counterpart (0)
 {
 };
 
 DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 :
-  marked_garbage (false), revive_at (0),
-  failed (failing), deleted (deletion), counterpart (0)
+  revive_at (0), failed (failing), deleted (deletion), counterpart (0)
 {
   assert (c.size ());
   for (auto i : c)
@@ -35,8 +33,7 @@ DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 
 DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
 :
-  marked_garbage (false), revive_at (0),
-  failed (failing), deleted (deletion), counterpart (0)
+  revive_at (0), failed (failing), deleted (deletion), counterpart (0)
 {
   assert (c && c->size);
   for (const int l : *c)
@@ -234,7 +231,6 @@ void Drupper::stagnate_clause (const int i) {
   }
   assert (!c->moved);
   c->garbage = true;
-  proof[i]->marked_garbage = true;
 }
 
 ///NOTE: The internal solver does not support reactivation
@@ -564,13 +560,10 @@ void Drupper::reallocate () {
     if (!dc->deleted) {
       assert (c);
       assert (!dc->revive_at);
-      if (dc->marked_garbage) {
-        dc->marked_garbage = c->garbage = false;
+      assert (c->garbage);
+      c->garbage = false;
+      if (c->size > 1)
         internal->watch_clause (c);
-      } else if (c->garbage) {
-        assert (c->size == 2);
-        assert (0 && "remove this if you are actually delaying the trace of garbage binaries");
-      }
     }
   }
   for (int i = proof.size () - 1; i >= 0; i--) {

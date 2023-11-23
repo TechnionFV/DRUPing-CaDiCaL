@@ -41,10 +41,9 @@ class Clause;
 
 class DrupperClause {
 public:
-  bool marked_garbage:1;
-  unsigned revive_at;
   bool failed:1;
   bool deleted:1;
+  unsigned revive_at;
   Clause * counterpart;
   vector<int> literals;
   DrupperClause (bool deletion = false, bool failing = false);
