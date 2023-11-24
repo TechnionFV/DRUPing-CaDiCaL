@@ -38,17 +38,31 @@ Limitations:
 -----------------------------------------------------------------------------------*/
 
 class Clause;
+class Drupper;
+
+enum DCVariant {
+  CLAUSE =    0,
+  LITERALS =  1
+};
 
 class DrupperClause {
+  bool variant:1;
 public:
   bool deleted:1;
   unsigned revive_at;
-  Clause * counterpart;
-  vector<int> literals;
+  union {
+    Clause * counterpart;
+    vector<int> literals;
+  };
   DrupperClause (bool deletion = false, bool failing = false);
   DrupperClause (vector<int> c, bool deletion = false, bool failing = false);
   DrupperClause (Clause * c, bool deletion = false, bool failing = false);
-  ~DrupperClause () = default;
+  ~DrupperClause ();
+  DCVariant variant_type () const;
+  void destroy_variant ();
+  void set_variant (Clause *);
+  void set_variant (const vector<int> &);
+  Clause * flip_variant ();
 };
 
 struct lock_scope {
@@ -94,7 +108,6 @@ class Drupper {
   bool trivially_satisfied (const vector <int> &);
   void append_lemma (DrupperClause * dc, Clause * c);
   void append_failed (const vector<int>  &);
-  void append_updated (Clause *);
   void revive_clause (int);
   void stagnate_clause (const int);
   void reactivate_fixed (int);
@@ -133,6 +146,7 @@ class Drupper {
   bool core_is_unsat () const;
   void dump_core () const;
 
+  friend class DrupperClause;
 
   struct {
 

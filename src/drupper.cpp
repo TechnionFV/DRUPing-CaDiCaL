@@ -18,17 +18,17 @@ void Internal::drup () {
 
 DrupperClause::DrupperClause (bool deletion, bool failing)
 :
-  revive_at (0), deleted (deletion), counterpart (0)
+  revive_at (0), deleted (deletion)
 {
+  set_variant ((Clause *) 0);
 };
 
 DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 :
-  revive_at (0), deleted (deletion), counterpart (0)
+  revive_at (0), deleted (deletion)
 {
   assert (c.size ());
-  for (auto i : c)
-    literals.push_back (i);
+  set_variant (c);
 };
 
 DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
@@ -36,9 +36,53 @@ DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
   revive_at (0), deleted (deletion), counterpart (0)
 {
   assert (c && c->size);
-  for (const int l : *c)
-    literals.push_back (l);
+  set_variant (c);
+  flip_variant ();
 };
+
+DrupperClause::~DrupperClause () {
+  destroy_variant ();
+}
+
+DCVariant DrupperClause::variant_type () const {
+  return variant ? LITERALS : CLAUSE;
+}
+
+void DrupperClause::destroy_variant () {
+  switch (variant_type ())
+  {
+  case CLAUSE:
+    delete (char *) counterpart;
+    counterpart = 0;
+    break;
+  default:
+    literals.clear ();
+    literals.~vector ();
+  }
+}
+
+void DrupperClause::set_variant (Clause * c) {
+  destroy_variant ();
+  variant = CLAUSE;
+  counterpart = c;
+}
+
+void DrupperClause::set_variant (const vector<int> & c) {
+  destroy_variant ();
+  variant = LITERALS;
+  literals = c;
+}
+
+Clause * DrupperClause::flip_variant () {
+  assert (variant_type () == CLAUSE);
+  Clause * ref = counterpart;
+  assert (ref);
+  destroy_variant ();
+  set_variant (vector<int> {});
+  for (int l : *ref)
+    literals.push_back (l);
+  return ref;
+}
 
 /*------------------------------------------------------------------------*/
 
@@ -127,19 +171,15 @@ Clause * Drupper::new_unit_clause (const int lit, bool original) {
 /*------------------------------------------------------------------------*/
 
 void Drupper::set_counterpart (DrupperClause * dc, Clause * c) {
-  assert (!dc->counterpart);
-  dc->counterpart = c;
+  assert (dc->variant_type () == LITERALS || !dc->counterpart);
+  dc->set_variant (c);
   stats.counterparts++;
-  if (c) dc->literals.clear ();
 }
 
 void Drupper::reset_counterpart (DrupperClause * dc) {
-  assert (dc->counterpart && dc->literals.empty ());
-  for (const int & lit : *dc->counterpart)
-    dc->literals.push_back (lit);
-  dc->counterpart->drup_idx = 0;
+  Clause * counterpart = dc->flip_variant ();
+  counterpart->drup_idx = 0;
   stats.counterparts--;
-  dc->counterpart = 0;
 }
 
 /*------------------------------------------------------------------------*/
