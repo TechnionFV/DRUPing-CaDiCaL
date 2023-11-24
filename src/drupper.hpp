@@ -41,7 +41,6 @@ class Clause;
 
 class DrupperClause {
 public:
-  bool failed:1;
   bool deleted:1;
   unsigned revive_at;
   Clause * counterpart;
@@ -108,8 +107,9 @@ class Drupper {
   bool is_on_trail (Clause *);
 
   void mark_core (Clause *);
-  void mark_conflict_lit (const int l);
-  void mark_conflict (bool overconstarined);
+  void mark_conflict_lit (const int);
+  void mark_conflict (bool);
+  void mark_failing (const int);
 
   void assume_negation (const Clause *);
   bool propagate_conflict ();

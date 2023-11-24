@@ -18,13 +18,13 @@ void Internal::drup () {
 
 DrupperClause::DrupperClause (bool deletion, bool failing)
 :
-  revive_at (0), failed (failing), deleted (deletion), counterpart (0)
+  revive_at (0), deleted (deletion), counterpart (0)
 {
 };
 
 DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 :
-  revive_at (0), failed (failing), deleted (deletion), counterpart (0)
+  revive_at (0), deleted (deletion), counterpart (0)
 {
   assert (c.size ());
   for (auto i : c)
@@ -33,7 +33,7 @@ DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 
 DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
 :
-  revive_at (0), failed (failing), deleted (deletion), counterpart (0)
+  revive_at (0), deleted (deletion), counterpart (0)
 {
   assert (c && c->size);
   for (const int l : *c)
@@ -185,7 +185,6 @@ void Drupper::append_failed (const vector<int> & c) {
   append_lemma (new DrupperClause (c, true), 0);
   int i = proof.size () - 1;
   proof[i]->revive_at = i;
-  proof[i]->failed = true;
 }
 
 void Drupper::revive_clause (int i) {
@@ -214,15 +213,11 @@ void Drupper::revive_clause (int i) {
     set_counterpart (proof[j], c);
   }
   set_counterpart (proof[i], c);
-  if (dc->failed)
-    mark_core (c);
   STOP (drup_revive);
 }
 
 void Drupper::stagnate_clause (const int i) {
   Clause * c = proof[i]->counterpart;
-  if (c->size == 1) return;
-  internal->unwatch_clause (c);
   {
     // See the discussion in 'propagate' on avoiding to eagerly trace binary
     // clauses as deleted (produce 'd ...' lines) as soon they are marked
@@ -231,6 +226,8 @@ void Drupper::stagnate_clause (const int i) {
   }
   assert (!c->moved);
   c->garbage = true;
+  if (c->size > 1)
+    internal->unwatch_clause (c);
 }
 
 ///NOTE: The internal solver does not support reactivation
@@ -374,6 +371,13 @@ void Drupper::mark_conflict (bool overconstrained) {
     internal->failing ();
     internal->marked_failed = true;
   }
+}
+
+void Drupper::mark_failing (const int proof_sz) {
+  assert (proof_sz < proof.size () && !((proof.size () - proof_sz) % 2));
+  for (int i = proof_sz; i < proof.size(); i++)
+    if ((i - proof_sz) % 2)
+      mark_core (proof[i]->counterpart);
 }
 
 /*------------------------------------------------------------------------*/
@@ -945,6 +949,9 @@ bool Drupper::trim (bool overconstrained) {
       revive_clause (i);
       continue;
     }
+
+    if (proof_sz == i)
+      mark_failing (proof_sz);
 
     if (is_on_trail (c)) {
       if (core_units) mark_core (c);
