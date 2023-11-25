@@ -63,6 +63,8 @@ public:
   void set_variant (Clause *);
   void set_variant (const vector<int> &);
   Clause * flip_variant ();
+  Clause * clause ();
+  vector<int> & lits ();
 };
 
 struct lock_scope {

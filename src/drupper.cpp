@@ -20,7 +20,8 @@ DrupperClause::DrupperClause (bool deletion, bool failing)
 :
   revive_at (0), deleted (deletion)
 {
-  set_variant ((Clause *) 0);
+  variant = CLAUSE;
+  counterpart = 0;
 };
 
 DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
@@ -28,16 +29,19 @@ DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
   revive_at (0), deleted (deletion)
 {
   assert (c.size ());
-  set_variant (c);
+  variant = LITERALS;
+  new (&literals) std::vector<int>(c);
 };
 
 DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
 :
-  revive_at (0), deleted (deletion), counterpart (0)
+  revive_at (0), deleted (deletion)
 {
   assert (c && c->size);
-  set_variant (c);
-  flip_variant ();
+  variant = LITERALS;
+  new (&literals) std::vector<int>();
+  for (int l : *c)
+    literals.push_back (l);
 };
 
 DrupperClause::~DrupperClause () {
@@ -49,16 +53,10 @@ DCVariant DrupperClause::variant_type () const {
 }
 
 void DrupperClause::destroy_variant () {
-  switch (variant_type ())
-  {
-  case CLAUSE:
-    delete (char *) counterpart;
+  if (variant_type () == CLAUSE)
     counterpart = 0;
-    break;
-  default:
-    literals.clear ();
-    literals.~vector ();
-  }
+  else
+    literals.~vector();
 }
 
 void DrupperClause::set_variant (Clause * c) {
@@ -70,6 +68,7 @@ void DrupperClause::set_variant (Clause * c) {
 void DrupperClause::set_variant (const vector<int> & c) {
   destroy_variant ();
   variant = LITERALS;
+  new (&literals) std::vector<int>(c);
   literals = c;
 }
 
@@ -78,10 +77,20 @@ Clause * DrupperClause::flip_variant () {
   Clause * ref = counterpart;
   assert (ref);
   destroy_variant ();
-  set_variant (vector<int> {});
+  set_variant (vector<int> ());
   for (int l : *ref)
     literals.push_back (l);
   return ref;
+}
+
+Clause * DrupperClause::clause () {
+  assert (variant_type () == CLAUSE);
+  return counterpart;
+}
+
+vector<int> & DrupperClause::lits () {
+  assert (variant_type () == LITERALS);
+  return literals;
 }
 
 /*------------------------------------------------------------------------*/
@@ -172,7 +181,11 @@ Clause * Drupper::new_unit_clause (const int lit, bool original) {
 
 void Drupper::set_counterpart (DrupperClause * dc, Clause * c) {
   assert (dc->variant_type () == LITERALS || !dc->counterpart);
-  dc->set_variant (c);
+  if (c)
+    dc->set_variant (c);
+  else {
+    assert (dc->variant_type () == LITERALS && dc->literals.size ());
+  }
   stats.counterparts++;
 }
 
@@ -208,7 +221,8 @@ void Drupper::append_lemma (DrupperClause * dc, Clause * c) {
   if (c) {
     if (dc->deleted) {
       if (c->drup_idx) {
-        assert (proof[c->drup_idx - 1]->counterpart == c);
+        auto & pdc = proof[c->drup_idx - 1];
+        assert (pdc->clause () == c);
         dc->revive_at = c->drup_idx;
         reset_counterpart (proof[c->drup_idx - 1]);
       }
@@ -231,11 +245,12 @@ void Drupper::revive_clause (int i) {
   START (drup_revive);
   assert (i >= 0 && i < proof.size ());
   DrupperClause * dc = proof[i];
-  assert (!dc->counterpart && dc->deleted);
-  assert (dc->literals.size () > 1);
+  assert (dc->deleted);
+  const auto & literals = dc->lits ();
+  assert (literals.size () > 1);
   vector<int> & clause = internal->clause;
   assert (clause.empty());
-  for (int j : dc->literals) {
+  for (int j : literals) {
     if (internal->flags (j).eliminated ())
       internal->reactivate (j);
     clause.push_back (j);
@@ -248,7 +263,7 @@ void Drupper::revive_clause (int i) {
 #ifndef NDEBUG
     assert (j < i && j >= 0);
     assert (!proof[j]->revive_at);  // Are chains even possible?
-    assert (!proof[j]->deleted && !proof[j]->counterpart);
+    assert (!proof[j]->deleted);
 #endif
     set_counterpart (proof[j], c);
   }
@@ -257,7 +272,7 @@ void Drupper::revive_clause (int i) {
 }
 
 void Drupper::stagnate_clause (const int i) {
-  Clause * c = proof[i]->counterpart;
+  Clause * c = proof[i]->clause ();
   {
     // See the discussion in 'propagate' on avoiding to eagerly trace binary
     // clauses as deleted (produce 'd ...' lines) as soon they are marked
@@ -391,7 +406,7 @@ void Drupper::mark_conflict (bool overconstrained) {
         set_counterpart (proof[i], new_unit_clause (dc->literals[0], false));
       else
         revive_clause (i);
-      conflict = proof[i]->counterpart;
+      conflict = proof[i]->clause ();
     } else {
       conflict = internal->conflict;
     }
@@ -417,7 +432,7 @@ void Drupper::mark_failing (const int proof_sz) {
   assert (proof_sz < proof.size () && !((proof.size () - proof_sz) % 2));
   for (int i = proof_sz; i < proof.size(); i++)
     if ((i - proof_sz) % 2)
-      mark_core (proof[i]->counterpart);
+      mark_core (proof[i]->clause ());
 }
 
 /*------------------------------------------------------------------------*/
@@ -600,7 +615,7 @@ void Drupper::clear_failing (const unsigned proof_sz) {
 void Drupper::reallocate () {
   assert (isolated);
   for (DrupperClause * dc : proof) {
-    Clause * c = dc->counterpart;
+    Clause * c = dc->clause ();
     if (!dc->deleted) {
       assert (c);
       assert (!dc->revive_at);
@@ -612,14 +627,14 @@ void Drupper::reallocate () {
   }
   for (int i = proof.size () - 1; i >= 0; i--) {
     DrupperClause * dc = proof[i];
-    Clause * c = dc->counterpart;
     if (dc->deleted) {
+      Clause * c = dc->clause ();
       assert (c && !c->garbage);
       reset_counterpart (dc);
       if (dc->revive_at)
         reset_counterpart (proof[dc->revive_at - 1]);
-      if (dc->literals.size () == 1) continue;
-      internal->mark_garbage (c);
+      if (c->size > 1)
+        internal->mark_garbage (c);
     }
   }
 }
@@ -642,28 +657,30 @@ void Drupper::check_environment () const {
   assert (proof.size() == unsigned(stats.derived + stats.deleted));
   for (unsigned i = 0; i < proof.size(); i++) {
     DrupperClause * dc = proof[i];
-    Clause * c = dc->counterpart;
     assert (dc);
     if (dc->deleted) {
-      assert (dc->literals.size () && !c);
+      assert (dc->variant_type () == LITERALS);
+      assert (dc->variant_type () == LITERALS && dc->literals.size ());
       if (dc->revive_at) {
         assert (dc->revive_at <= proof.size ());
         assert (dc->revive_at > 0);
         assert (!proof[dc->revive_at-1]->revive_at);
         assert (!proof[dc->revive_at-1]->deleted);
-        assert (!proof[dc->revive_at-1]->counterpart);
+        assert (proof[dc->revive_at-1]->variant_type () == LITERALS);
         assert (proof[dc->revive_at-1]->literals.size ());
       }
     } else {
-      assert (!c || dc->literals.empty ());
-      assert (c || dc->literals.size ());
+      assert (dc->variant_type () == CLAUSE || dc->literals.size ());
     }
-    if (!dc->deleted && c && c->garbage) {
-      ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
-      // clauses as deleted (produce 'd ...' lines) as soon they are marked
-      // garbage.
-      assert (c->size == 2);
-      assert (0 && "remove this if you are actually delaying the trace of garbage binaries");
+    if (dc->variant_type () == CLAUSE) {
+      Clause * c = dc->clause ();
+      if (!dc->deleted && c && c->garbage) {
+        ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
+        // clauses as deleted (produce 'd ...' lines) as soon they are marked
+        // garbage.
+        assert (c->size == 2);
+        assert (0 && "remove this if you are actually delaying the trace of garbage binaries");
+      }
     }
   }
 #endif
@@ -719,16 +736,20 @@ void Drupper::dump_clause (const vector <int> & c) const {
 void Drupper::dump_proof () const {
   printf ("DUMP PROOF START\n");
   for (int i = proof.size () - 1; i >= 0; i--) {
-    printf ("(%d) %s: ", i, proof[i]->deleted ? "deleted" : "       ");
-    auto & lits = proof[i]->literals;
-    for (int l : lits)
-      printf ("%d ", l);
-    Clause * c = proof[i]->counterpart;
-    printf ("c: ");
-    if (!c) printf ("0 ");
-    else {
-      for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
-      printf ("%s", c->garbage ? "(garbage)" : "");
+    auto & dc = proof[i];
+    printf ("(%d) %s: ", i, dc->deleted ? "deleted" : "       ");
+    if (dc->variant_type () == LITERALS) {
+      auto & lits = dc->literals;
+      for (int l : lits)
+        printf ("%d ", l);
+    } else {
+      Clause * c = proof[i]->clause ();
+      printf ("c: ");
+      if (!c) printf ("0 ");
+      else {
+        for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+        printf ("%s", c->garbage ? "(garbage)" : "");
+      }
     }
     printf ("\n");
   }
@@ -856,7 +877,7 @@ void Drupper::add_updated_clause (Clause * c) {
   unsigned revive_at = 0;
   if (c->drup_idx) {
     revive_at = c->drup_idx;
-    assert (proof[revive_at - 1]->counterpart == c);
+    assert (proof[revive_at - 1]->clause () == c);
     reset_counterpart (proof[revive_at - 1]);
   }
   append_lemma (new DrupperClause (), c);
@@ -935,11 +956,14 @@ void Drupper::update_moved_counterparts () {
   assert (!validating);
   START (drup_inprocess);
   for (unsigned i = 0; i < proof.size(); i++) {
-    bool deleted = proof[i]->deleted;
-    Clause * c = proof[i]->counterpart;
+    auto & dc = proof[i];
 
-    if (deleted || !c || !c->moved)
-       continue;
+    if (dc->deleted || dc->variant_type () == LITERALS)
+      continue;
+
+    Clause * c = dc->clause ();
+    if (!c->moved)
+      continue;
 
 #ifndef NDEBUG
     assert (c->copy && c != c->copy);
@@ -948,8 +972,8 @@ void Drupper::update_moved_counterparts () {
 #endif
 
     c->copy->drup_idx = c->drup_idx;
-    reset_counterpart (proof[i]);
-    set_counterpart (proof[i], c->copy);
+    reset_counterpart (dc);
+    set_counterpart (dc, c->copy);
   }
   STOP (drup_inprocess);
 }
@@ -979,11 +1003,10 @@ bool Drupper::trim (bool overconstrained) {
 
   // Main trimming loop
   for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
+    auto & dc = proof[i];
+    bool deleted = dc->deleted;
 
-    bool deleted = proof[i]->deleted;
-    Clause * c = proof[i]->counterpart;
-
-    assert (!deleted || !c);
+    assert (!deleted || dc->variant_type () == LITERALS);
 
     if (deleted) {
       revive_clause (i);
@@ -992,6 +1015,8 @@ bool Drupper::trim (bool overconstrained) {
 
     if (proof_sz == i)
       mark_failing (proof_sz);
+
+    Clause * c = proof[i]->clause ();
 
     if (is_on_trail (c)) {
       if (core_units) mark_core (c);
