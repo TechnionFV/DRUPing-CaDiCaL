@@ -312,7 +312,7 @@ void Drupper::print_stats () {
   auto all = internal->stats.added.total;
   auto drup = stats.deleted + stats.derived;
 
-  MSG ("proof:           %15" PRId64 "   %10.2f %%  of all clauses", drup, percent (stats.derived, all));
+  MSG ("proof:           %15" PRId64 "   %10.2f %%  of all clauses", drup, percent (drup, all));
   MSG ("derived:         %15" PRId64 "   %10.2f %%  of proof size", stats.derived, percent (stats.derived, drup));
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of proof size", stats.deleted, percent (stats.deleted, drup));
   MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of proof size", stats.counterparts, percent (stats.counterparts, drup));

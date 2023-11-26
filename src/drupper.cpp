@@ -95,11 +95,11 @@ vector<int> & DrupperClause::lits () {
 
 /*------------------------------------------------------------------------*/
 
-Drupper::Drupper (Internal * i, File * f, bool core_units)
+Drupper::Drupper (Internal * i, File * f, bool core_first, bool core_units)
 :
   internal (i), failed_constraint (0),
   core_units (core_units), isolated (0),
-  validating (0), file (f)
+  validating (0), file (f), core_first (core_first)
 {
   LOG ("DRUPPER new");
 
@@ -107,8 +107,8 @@ Drupper::Drupper (Internal * i, File * f, bool core_units)
   //
   memset (&stats, 0, sizeof (stats));
 
-  // if (internal->opts.drupdumpcore && !f)
-  //   file = File::write (internal, stdout, "<stdout>");
+  if (internal->opts.drupdumpcore && !f)
+    file = File::write (internal, stdout, "<stdout>");
 }
 
 Drupper::~Drupper () {
@@ -501,7 +501,7 @@ void Drupper::assume_negation (const Clause * lemma) {
 bool Drupper::propagate_conflict () {
   START (drup_propagate);
   assert(!internal->conflict);
-  if (internal->propagate ())
+  if (internal->propagate (core_first))
   {
     START (drup_repropagate);
     {
@@ -685,7 +685,7 @@ void Drupper::reallocate () {
         reset_counterpart (proof[dc->revive_at - 1]); // No need to fill the literals here?
       if (c->size > 1) {
         internal->unwatch_clause (c);
-        delete [] (char *) c;
+        delete [] (char*) c;
       }
 #ifndef NDEBUG
       else revived_units++;
@@ -699,8 +699,8 @@ void Drupper::reallocate () {
 }
 
 void Drupper::reconstruct (const unsigned proof_sz) {
-  START (drup_reconstruct);
   lock_scope isolate (isolated);
+  START (drup_reconstruct);
   unmark_core_clauses ();
   reallocate ();
   clear_failing (proof_sz);
@@ -1128,6 +1128,21 @@ bool Drupper::trim (bool overconstrained) {
 
   STOP (drup_trim);
   return true;
+}
+
+void Drupper::sort_watches (const int lit) {
+  auto & ws = internal->watches (lit);
+  int l = 0, h = ws.size () - 1;
+  while (l < h) {
+    auto w = ws[h];
+    if (!w.clause->core) {
+      h--;
+      continue;
+    }
+    auto tw = ws[l];
+    ws[l++] = ws[h];
+    ws[h] = tw;
+  }
 }
 
 }

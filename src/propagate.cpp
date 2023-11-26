@@ -159,7 +159,7 @@ void Internal::search_assign_driving (int lit, Clause * c) {
 // propagation costs (2013 JAIR article by Ian Gent) at the expense of four
 // more bytes for each clause.
 
-bool Internal::propagate () {
+bool Internal::propagate (bool core_first) {
 
   if (level) require_mode (SEARCH);
   assert (!unsat);
@@ -175,6 +175,12 @@ bool Internal::propagate () {
 
     const int lit = -trail[propagated++];
     LOG ("propagating %d", -lit);
+
+    if (core_first) {
+      assert (drupper);
+      drupper->sort_watches (lit);
+    }
+
     Watches & ws = watches (lit);
 
     const const_watch_iterator eow = ws.end ();

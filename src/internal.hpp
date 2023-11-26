@@ -534,7 +534,7 @@ struct Internal {
   void search_assume_decision (int decision);
   void search_assume_multiple_decisions (const vector<int> &);
   void assign_unit (int lit);
-  bool propagate ();
+  bool propagate (bool core_first = false);
 
   // Undo and restart in 'backtrack.cpp'.
   //

@@ -102,6 +102,7 @@ class Drupper {
   bool isolated;
   bool validating;
   File * file;
+  bool core_first;
 
   void set_counterpart (DrupperClause * dc, Clause * c);
   void reset_counterpart (DrupperClause *);
@@ -168,7 +169,7 @@ class Drupper {
 
 public:
 
-  Drupper (Internal *, File * f = 0, bool core_units = 0);
+  Drupper (Internal *, File * f = 0, bool core_first = false, bool core_units = false);
   ~Drupper ();
 
   bool setup_options ();
@@ -185,6 +186,8 @@ public:
   void update_moved_counterparts ();
 
   bool trim (bool overconstrained = false);
+
+  void sort_watches (const int);
 
   void print_stats ();
 };
