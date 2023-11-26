@@ -99,7 +99,7 @@ Drupper::Drupper (Internal * i, File * f, bool core_units)
 :
   internal (i), failed_constraint (0),
   core_units (core_units), isolated (0),
-  validating (0), file (f), solves (0)
+  validating (0), file (f)
 {
   LOG ("DRUPPER new");
 
@@ -107,8 +107,8 @@ Drupper::Drupper (Internal * i, File * f, bool core_units)
   //
   memset (&stats, 0, sizeof (stats));
 
-  if (internal->opts.drupdumpcore && !f)
-    file = File::write (internal, stdout, "<stdout>");
+  // if (internal->opts.drupdumpcore && !f)
+  //   file = File::write (internal, stdout, "<stdout>");
 }
 
 Drupper::~Drupper () {
@@ -117,6 +117,8 @@ Drupper::~Drupper () {
   for (const auto & dc : proof)
     delete (DrupperClause *) dc;
   for (const auto & c : unit_clauses)
+    delete [] (char*) c;
+  for (const auto & c : clauses)
     delete [] (char*) c;
   delete file;
 }
@@ -135,6 +137,55 @@ bool Drupper::setup_options () {
 }
 
 /*------------------------------------------------------------------------*/
+
+Clause * Drupper::new_clause (const vector<int> & clause) {
+
+  assert (clause.size () <= (size_t) INT_MAX);
+  const int size = (int) clause.size ();
+  assert (size >= 2);
+
+  // Determine whether this clauses should be kept all the time.
+  //
+  bool keep = true;
+
+  size_t bytes = Clause::bytes (size);
+  Clause * c = (Clause *) new char[bytes];
+
+  c->conditioned = false;
+  c->covered = false;
+  c->enqueued = false;
+  c->frozen = false;
+  c->garbage = false;
+  c->gate = false;
+  c->hyper = false;
+  c->instantiated = false;
+  c->keep = keep;
+  c->moved = false;
+  c->reason = false;
+  c->redundant = true;
+  c->transred = false;
+  c->subsume = false;
+  c->vivified = false;
+  c->vivify = false;
+  c->core = false;
+  c->drup_idx = 0;
+  c->used = 0;
+
+  c->glue = 0;
+  c->size = size;
+  c->pos = 2;
+
+  for (int i = 0; i < size; i++) c->literals[i] = clause[i];
+
+  // Just checking that we did not mess up our sophisticated memory layout.
+  // This might be compiler dependent though. Crucial for correctness.
+  //
+  assert (c->bytes () == bytes);
+
+  clauses.push_back (c);
+
+  return c;
+}
 
 Clause * Drupper::new_unit_clause (const int lit, bool original) {
 
@@ -248,15 +299,10 @@ void Drupper::revive_clause (int i) {
   assert (dc->deleted);
   const auto & literals = dc->lits ();
   assert (literals.size () > 1);
-  vector<int> & clause = internal->clause;
-  assert (clause.empty());
-  for (int j : literals) {
+  for (int j : literals)
     if (internal->flags (j).eliminated ())
       internal->reactivate (j);
-    clause.push_back (j);
-  }
-  Clause * c = internal->new_clause (true );
-  clause.clear();
+  Clause * c = new_clause (literals);
   internal->watch_clause (c);
   if (dc->revive_at) {
     int j = dc->revive_at - 1;
@@ -268,6 +314,7 @@ void Drupper::revive_clause (int i) {
     set_counterpart (proof[j], c);
   }
   set_counterpart (proof[i], c);
+  stats.revived++;
   STOP (drup_revive);
 }
 
@@ -414,13 +461,10 @@ void Drupper::mark_conflict (bool overconstrained) {
     for (int i = 0; i < conflict->size; i++)
       mark_conflict_lit (conflict->literals[i]);
   } else {
-    assert (internal->clause.empty ());
     if (internal->unsat_constraint && internal->constraint.size () > 1) {
-      internal->clause = internal->constraint;
-      failed_constraint = internal->new_clause (true);
+      failed_constraint = new_clause (internal->constraint);
       mark_core (failed_constraint);
       internal->watch_clause (failed_constraint);
-      internal->clause.clear ();
     }
     assert (!internal->marked_failed);
     internal->failing ();
@@ -465,7 +509,7 @@ bool Drupper::propagate_conflict () {
       // missing units. re-propagate the entire trail.
       ///TODO: Understand what exactly happens and why is this needed.
       // A good point to start: test/trace/reg0048.trace.
-      assert (solves);
+      assert (stats.solves);
     }
     internal->propagated = 0;
     if (internal->propagate ()) {
@@ -577,6 +621,9 @@ void Drupper::unmark_core_clauses () {
   for (Clause * c : internal->clauses)
     if (c->core)
       c->core = false, stats.core--;
+  for (Clause * c : clauses)
+    if (c->core)
+      c->core = false, stats.core--;
   for (Clause * c : unit_clauses)
     if (c->core)
       c->core = false, stats.core--;
@@ -598,7 +645,7 @@ void Drupper::restore_trail () {
 void Drupper::clear_failing (const unsigned proof_sz) {
   if (failed_constraint) {
     internal->unwatch_clause (failed_constraint);
-    internal->mark_garbage (failed_constraint);
+    delete [] (char *) failed_constraint;
     failed_constraint = 0;
   }
   if (proof.size () == proof_sz) return;
@@ -625,6 +672,9 @@ void Drupper::reallocate () {
         internal->watch_clause (c);
     }
   }
+#ifndef NDEBUG
+  int revived_units = 0;
+#endif
   for (int i = proof.size () - 1; i >= 0; i--) {
     DrupperClause * dc = proof[i];
     if (dc->deleted) {
@@ -632,14 +682,23 @@ void Drupper::reallocate () {
       assert (c && !c->garbage);
       reset_counterpart (dc);
       if (dc->revive_at)
-        reset_counterpart (proof[dc->revive_at - 1]);
-      if (c->size > 1)
-        internal->mark_garbage (c);
+        reset_counterpart (proof[dc->revive_at - 1]); // No need to fill the literals here?
+      if (c->size > 1) {
+        internal->unwatch_clause (c);
+        delete [] (char *) c;
+      }
+#ifndef NDEBUG
+      else revived_units++;
+#endif
     }
   }
+#ifndef NDEBUG
+  assert (revived_units < 2);
+#endif
+  clauses.clear ();
 }
 
-void Drupper::reconsruct (const unsigned proof_sz) {
+void Drupper::reconstruct (const unsigned proof_sz) {
   START (drup_reconstruct);
   lock_scope isolate (isolated);
   unmark_core_clauses ();
@@ -773,6 +832,12 @@ bool Drupper::core_is_unsat () const {
         s.add (*i);
       s.add (0);
     }
+  for (Clause * c : clauses)
+    if (c->core) {
+      for (int * i = c->begin (); i != c->end (); i++)
+        s.add (*i);
+      s.add (0);
+    }
   for (Clause * c : unit_clauses)
     if (c->core) {
       s.add (c->literals[0]);
@@ -801,6 +866,12 @@ void Drupper::dump_core () const {
         file->put (*i), file->put (' ');
       file->put ("0\n");
     }
+  for (Clause * c : clauses)
+    if (c->core) {
+      for (int * i = c->begin (); i != c->end (); i++)
+        file->put (*i), file->put (' ');
+      file->put ("0\n");
+    }
   for (Clause * c : unit_clauses)
     if (c->core) {
       file->put (c->literals[0]);
@@ -816,7 +887,7 @@ void Drupper::dump_core () const {
       file->put (i), file->put (' ');
     file->put ("0\n");
   } // Otherwise should be part if internal->clauses
-  file->put ("DUMP END START\n");
+  file->put ("DUMP CORE START\n");
 }
 
 /*------------------------------------------------------------------------*/
@@ -984,7 +1055,7 @@ bool Drupper::trim (bool overconstrained) {
   START (drup_trim);
   LOG ("DRUPPER trim");
 
-  solves++;
+  stats.solves++;
 
   save_scope<bool> recover_unsat (internal->unsat);
   assert (!validating && !isolated && !setup_options ());
@@ -1053,7 +1124,8 @@ bool Drupper::trim (bool overconstrained) {
     #endif
   }
 
-  reconsruct (proof_sz);
+  reconstruct (proof_sz);
+
   STOP (drup_trim);
   return true;
 }

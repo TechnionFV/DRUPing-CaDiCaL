@@ -92,8 +92,8 @@ class Drupper {
   //
   vector<DrupperClause *> proof;
 
-  // stack containig clauses of size 1
-  //
+  vector<Clause *> clauses;
+  Clause * new_clause (const vector<int> &);
   vector<Clause *> unit_clauses;
   Clause * new_unit_clause (const int lit, bool original);
 
@@ -102,7 +102,6 @@ class Drupper {
   bool isolated;
   bool validating;
   File * file;
-  int solves;
 
   void set_counterpart (DrupperClause * dc, Clause * c);
   void reset_counterpart (DrupperClause *);
@@ -135,7 +134,7 @@ class Drupper {
   void restore_trail ();
   void clear_failing (const unsigned);
   void reallocate ();
-  void reconsruct (unsigned);
+  void reconstruct (unsigned);
 
   void check_environment () const;
   void dump_clauses (bool active = false) const;
@@ -152,8 +151,10 @@ class Drupper {
 
   struct {
 
+    int64_t solves;
     int64_t derived;            // number of added derived clauses
     int64_t deleted;            // number of deleted clauses
+    int64_t revived;            // number of revived clauses
     int64_t counterparts;       // number of counterpart references
     int64_t units;              // number of unit clauses allcoated
     int64_t core;               // number of core clauses in current phase
