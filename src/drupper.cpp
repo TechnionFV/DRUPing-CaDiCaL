@@ -672,6 +672,22 @@ void Drupper::reallocate () {
         internal->watch_clause (c);
     }
   }
+
+  for (int i = proof.size () - 1; i >= 0; i--) {
+    DrupperClause * dc = proof[i];
+    if (dc->deleted) {
+      Clause * c = dc->clause ();
+      assert (c && !c->garbage);
+      c->garbage = true;
+      assert (!is_on_trail (c) || c->size == 1);
+    }
+  }
+
+  if (!internal->protected_reasons)
+    internal->protect_reasons ();
+  internal->flush_all_occs_and_watches ();
+  internal->unprotect_reasons ();
+
 #ifndef NDEBUG
   int revived_units = 0;
 #endif
@@ -679,14 +695,12 @@ void Drupper::reallocate () {
     DrupperClause * dc = proof[i];
     if (dc->deleted) {
       Clause * c = dc->clause ();
-      assert (c && !c->garbage);
+      assert (c && c->garbage);
       reset_counterpart (dc);
       if (dc->revive_at)
         reset_counterpart (proof[dc->revive_at - 1]); // No need to fill the literals here?
-      if (c->size > 1) {
-        internal->unwatch_clause (c);
+      if (c->size > 1)
         delete [] (char*) c;
-      }
 #ifndef NDEBUG
       else revived_units++;
 #endif
