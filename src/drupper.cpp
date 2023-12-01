@@ -11,7 +11,6 @@ namespace CaDiCaL {
 void Internal::drup () {
   assert (!drupper);
   drupper = new Drupper (this);
-  drupper->setup_options ();
 }
 
 /*------------------------------------------------------------------------*/
@@ -95,13 +94,14 @@ vector<int> & DrupperClause::lits () {
 
 /*------------------------------------------------------------------------*/
 
-Drupper::Drupper (Internal * i, File * f, bool core_first, bool core_units)
+Drupper::Drupper (Internal * i, File * f)
 :
   internal (i), failed_constraint (0),
-  core_units (core_units), isolated (0),
-  validating (0), file (f), core_first (core_first)
+  isolated (0), validating (0), file (f)
 {
   LOG ("DRUPPER new");
+
+  setup_internal_options ();
 
   // Initialize statistics.
   //
@@ -124,7 +124,21 @@ Drupper::~Drupper () {
 }
 /*------------------------------------------------------------------------*/
 
-bool Drupper::setup_options () {
+void Drupper::set (const char * setting, bool val) {
+  if (!strcmp (setting, "core_units"))
+    settings.core_units = val;
+  else if (!strcmp (setting, "unmark_core"))
+    settings.unmark_core = val;
+  else if (!strcmp (setting, "core_first"))
+    settings.core_first = val;
+  else if (!strcmp (setting, "check_core"))
+    settings.check_core = val;
+  else if (!strcmp (setting, "extract_core_literals"))
+    settings.extract_core_literals = val;
+  else assert (0 && "unknown drupper seting");
+}
+
+bool Drupper::setup_internal_options () {
   auto & opts = internal->opts;
   bool updated = false;
   updated |= opts.chrono;
@@ -406,7 +420,8 @@ void Drupper::undo_trail_core (Clause * c, unsigned & trail_sz) {
 
     undo_trail_literal (l);
 
-    if (core_units) mark_core (r);
+    if (settings.core_units)
+      mark_core (r);
 
     if (r->core)
       for (int j = 1; j < r->size; j++)
@@ -501,7 +516,7 @@ void Drupper::assume_negation (const Clause * lemma) {
 bool Drupper::propagate_conflict () {
   START (drup_propagate);
   assert(!internal->conflict);
-  if (internal->propagate (core_first))
+  if (internal->propagate (settings.core_first))
   {
     START (drup_repropagate);
     {
@@ -617,7 +632,6 @@ void Drupper::mark_core_trail_antecedents () {
 }
 
 void Drupper::unmark_core_clauses () {
-  save_core_phase_stats ();
   for (Clause * c : internal->clauses)
     if (c->core)
       c->core = false, stats.core--;
@@ -715,7 +729,9 @@ void Drupper::reallocate () {
 void Drupper::reconstruct (const unsigned proof_sz) {
   lock_scope isolate (isolated);
   START (drup_reconstruct);
-  unmark_core_clauses ();
+  save_core_phase_stats ();
+  if (settings.unmark_core)
+    unmark_core_clauses ();
   reallocate ();
   clear_failing (proof_sz);
   restore_trail ();
@@ -904,6 +920,35 @@ void Drupper::dump_core () const {
   file->put ("DUMP CORE START\n");
 }
 
+vector<int> Drupper::extract_core_literals () const {
+  vector<int> core_lits;
+  for (Clause * c : internal->clauses)
+    if (c->core)
+      for (int l : *c)
+        if (!internal->flags (l).mark_core (true))
+          core_lits.push_back (l);
+  for (Clause * c : clauses)
+    if (c->core)
+      for (int l : *c)
+        if (!internal->flags (l).mark_core (true))
+          core_lits.push_back (l);
+  for (Clause * c : unit_clauses)
+    if (c->core)
+      for (int l : *c)
+        if (!internal->flags (l).mark_core (true))
+          core_lits.push_back (l);
+  for (int l : internal->assumptions)
+    if (!internal->flags (l).mark_core (true))
+      core_lits.push_back (l);
+  if (internal->unsat_constraint && internal->constraint.size () == 1) {
+    int l = internal->constraint[0];
+    if (!internal->flags (l).mark_core (true))
+      core_lits.push_back (l);
+  }
+  // Otherwise should be part if internal->clauses
+  return core_lits;
+}
+
 /*------------------------------------------------------------------------*/
 
 void Drupper::add_derived_clause (Clause * c) {
@@ -1065,14 +1110,14 @@ void Drupper::update_moved_counterparts () {
 
 /*------------------------------------------------------------------------*/
 
-bool Drupper::trim (bool overconstrained) {
+optional<vector<int>> Drupper::trim (bool overconstrained) {
   START (drup_trim);
   LOG ("DRUPPER trim");
 
   stats.solves++;
 
   save_scope<bool> recover_unsat (internal->unsat);
-  assert (!validating && !isolated && !setup_options ());
+  assert (!validating && !isolated && !setup_internal_options ());
   check_environment ();
 
   // Mark the conflict and its reasons as core.
@@ -1104,7 +1149,8 @@ bool Drupper::trim (bool overconstrained) {
     Clause * c = proof[i]->clause ();
 
     if (is_on_trail (c)) {
-      if (core_units) mark_core (c);
+      if (settings.core_units)
+        mark_core (c);
       undo_trail_core (c, trail_sz);
       internal->report ('m');
     }
@@ -1134,14 +1180,20 @@ bool Drupper::trim (bool overconstrained) {
     // ```
     #ifndef NDEBUG
       // Ensure the set of all core clauses is unsatisfiable
-      assert (core_is_unsat ());
+      if (settings.check_core)
+        assert (core_is_unsat ());
     #endif
   }
+
+  optional<vector<int>> res = {};
+
+  if (settings.extract_core_literals)
+    res = extract_core_literals ();
 
   reconstruct (proof_sz);
 
   STOP (drup_trim);
-  return true;
+  return res;
 }
 
 void Drupper::sort_watches (const int lit) {

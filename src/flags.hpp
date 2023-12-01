@@ -31,6 +31,10 @@ struct Flags {        // Variable flags.
   unsigned char assumed : 2;
   unsigned char failed : 2;
 
+  // Related to Drupper
+  //
+  bool core : 1;
+
   enum {
     UNUSED      = 0,
     ACTIVE      = 1,
@@ -45,7 +49,7 @@ struct Flags {        // Variable flags.
   // Initialized explicitly in 'Internal::init' through this function.
   //
   Flags () {
-    seen = keep = poison = removable = shrinkable = false;
+    seen = keep = poison = removable = shrinkable = core = false;
     subsume = elim = ternary = true;
     block = 3u;
     skip = assumed = failed = 0;
@@ -58,6 +62,8 @@ struct Flags {        // Variable flags.
   bool eliminated () const { return status == ELIMINATED; }
   bool substituted () const { return status == SUBSTITUTED; }
   bool pure () const { return status == PURE; }
+
+  bool mark_core (bool val) { bool core_ = core; core = val; return core_; }
 
   // The flags marked with '(*)' are copied during 'External::copy_flags',
   // which in essence means they are reset in the copy if they were clear.

@@ -224,6 +224,7 @@ int Internal::cdcl_loop_with_inprocessing () {
   STOP (search);
 
   if (res == 20 && drupper) {
+    drupper->set ("core_first");
     drupper->trim ();
   }
 

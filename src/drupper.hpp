@@ -1,8 +1,9 @@
 #ifndef _drupper_hpp_INCLUDED
 #define _drupper_hpp_INCLUDED
 
-#include "observer.hpp"
-#include "unordered_map"
+#include <unordered_map>
+#include <optional>
+using std::optional;
 
 namespace CaDiCaL {
 
@@ -147,6 +148,7 @@ class Drupper {
 
   bool core_is_unsat () const;
   void dump_core () const;
+  vector<int> extract_core_literals () const;
 
   friend class DrupperClause;
 
@@ -163,16 +165,33 @@ class Drupper {
 
   } stats;
 
+  bool setup_internal_options ();
+
+  struct Settings {
+
+    bool core_units:1;              // mark trail reason units as core
+    bool unmark_core:1;             // unmark core clauses after trim
+    bool check_core:1;              // assert the set of core literals is unsat (under debug mode only)
+    bool extract_core_literals:1;   // once formula have been trimmed, trim () will return core literals
+    bool core_first:1;              // sorts watches to propagate core literals first during trim
+
+    Settings () { // default
+      core_units = extract_core_literals = core_first = false;
+      unmark_core = check_core = true;
+    }
+
+  } settings;
+
   void save_core_phase_stats () {
     stats.cores.push_back (stats.core);
   }
 
 public:
 
-  Drupper (Internal *, File * f = 0, bool core_first = false, bool core_units = false);
+  Drupper (Internal *, File * f = 0);
   ~Drupper ();
 
-  bool setup_options ();
+  void set (const char *, bool val = true);
 
   void add_derived_clause (Clause *);
   void add_derived_unit_clause (const int, bool original = false);
@@ -185,7 +204,7 @@ public:
 
   void update_moved_counterparts ();
 
-  bool trim (bool overconstrained = false);
+  optional<vector<int>> trim (bool overconstrained = false);
 
   void sort_watches (const int);
 
