@@ -48,6 +48,7 @@ struct Clause {
   // Drupper
   //
   bool core:1;        // clause has been found to be core since last 'trim'.
+  bool dummy:1;       // owned by drupper
   unsigned drup_idx;  // reverse mapping used by drupper.
 
   // The glucose level ('LBD' or short 'glue') is a heuristic value for the

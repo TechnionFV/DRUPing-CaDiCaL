@@ -109,6 +109,7 @@ Clause * Internal::new_clause (bool red, int glue) {
   c->vivify = false;
   c->core = false;
   c->drup_idx = 0;
+  c->dummy = false;
   c->used = 0;
 
   c->glue = glue;
@@ -211,6 +212,8 @@ size_t Internal::shrink_clause (Clause * c, int new_size) {
 // reclaimed immediately.
 
 void Internal::deallocate_clause (Clause * c) {
+  if (drupper)
+    return;
   char * p = (char*) c;
   if (arena.contains (p)) return;
   LOG (c, "deallocate pointer %p", (void*) c);
@@ -387,11 +390,11 @@ void Internal::add_new_original_clause () {
       if (drupper)
         drupper->delete_clause (original, true);
     }
-    if (drupper && !size && original.size ()) {
-      if (!derived)
-        drupper->delete_clause (original, true);
-      drupper->trim (true /* overcontrained */);
-    }
+    // if (drupper && !size && original.size ()) {
+    //   if (!derived)
+    //     drupper->delete_clause (original, true);
+    //   drupper->trim (true /* overcontrained */);
+    // }
   }
   clause.clear ();
 }

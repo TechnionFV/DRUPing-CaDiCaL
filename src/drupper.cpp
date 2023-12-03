@@ -15,81 +15,17 @@ void Internal::drup () {
 
 /*------------------------------------------------------------------------*/
 
-DrupperClause::DrupperClause (bool deletion, bool failing)
-:
-  revive_at (0), deleted (deletion)
+DrupperClause::DrupperClause (Clause * c, bool deletion)
+: deleted (deletion), counterpart (c)
 {
-  variant = CLAUSE;
-  counterpart = 0;
 };
-
-DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
-:
-  revive_at (0), deleted (deletion)
-{
-  assert (c.size ());
-  variant = LITERALS;
-  new (&literals) std::vector<int>(c);
-};
-
-DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
-:
-  revive_at (0), deleted (deletion)
-{
-  assert (c && c->size);
-  variant = LITERALS;
-  new (&literals) std::vector<int>();
-  for (int l : *c)
-    literals.push_back (l);
-};
-
-DrupperClause::~DrupperClause () {
-  destroy_variant ();
-}
-
-DCVariant DrupperClause::variant_type () const {
-  return variant ? LITERALS : CLAUSE;
-}
-
-void DrupperClause::destroy_variant () {
-  if (variant_type () == CLAUSE)
-    counterpart = 0;
-  else
-    literals.~vector();
-}
-
-void DrupperClause::set_variant (Clause * c) {
-  destroy_variant ();
-  variant = CLAUSE;
-  counterpart = c;
-}
-
-void DrupperClause::set_variant (const vector<int> & c) {
-  destroy_variant ();
-  variant = LITERALS;
-  new (&literals) std::vector<int>(c);
-  literals = c;
-}
-
-Clause * DrupperClause::flip_variant () {
-  assert (variant_type () == CLAUSE);
-  Clause * ref = counterpart;
-  assert (ref);
-  destroy_variant ();
-  set_variant (vector<int> ());
-  for (int l : *ref)
-    literals.push_back (l);
-  return ref;
-}
 
 Clause * DrupperClause::clause () {
-  assert (variant_type () == CLAUSE);
   return counterpart;
 }
 
-vector<int> & DrupperClause::lits () {
-  assert (variant_type () == LITERALS);
-  return literals;
+bool DrupperClause::deletion () const {
+  return deleted;
 }
 
 /*------------------------------------------------------------------------*/
@@ -107,15 +43,22 @@ Drupper::Drupper (Internal * i, File * f)
   //
   memset (&stats, 0, sizeof (stats));
 
-  if (internal->opts.drupdumpcore && !f)
-    file = File::write (internal, stdout, "<stdout>");
+  // if (internal->opts.drupdumpcore && !f)
+  //   file = File::write (internal, stdout, "<stdout>");
 }
 
 Drupper::~Drupper () {
   LOG ("DRUPPER delete");
   isolated = true;
-  for (const auto & dc : proof)
+  if (!internal->protected_reasons)
+    internal->protect_reasons ();
+  internal->delete_garbage_clauses ();
+  internal->unprotect_reasons ();
+  for (const auto & dc : proof) {
+    if (dc->deleted && !dc->counterpart->dummy)
+      delete [] (char *) dc->counterpart;
     delete (DrupperClause *) dc;
+  }
   for (const auto & c : unit_clauses)
     delete [] (char*) c;
   for (const auto & c : clauses)
@@ -144,10 +87,12 @@ bool Drupper::setup_internal_options () {
   updated |= opts.chrono;
   updated |= opts.probe;
   updated |= opts.compact;
+  updated |= opts.arena;
   updated |= opts.vivify;
   opts.chrono = 0;
   opts.probe = 0;
   opts.compact = 0;
+  opts.arena = 0;
   ///FIXME: ../interesting/vivify/red-*
   opts.vivify = 0;
   return updated;
@@ -186,6 +131,7 @@ Clause * Drupper::new_clause (const vector<int> & clause) {
   c->vivify = false;
   c->core = false;
   c->drup_idx = 0;
+  c->dummy = true;
   c->used = 0;
 
   c->glue = 0;
@@ -232,6 +178,7 @@ Clause * Drupper::new_unit_clause (const int lit, bool original) {
   c->vivify = false;
   c->core = false;
   c->drup_idx = 0;
+  c->dummy = true;
   c->used = c->glue = 0;
   c->size = size;
   c->pos = 2;
@@ -243,24 +190,6 @@ Clause * Drupper::new_unit_clause (const int lit, bool original) {
   LOG (c, "new pointer %p", (void*) c);
 
   return c;
-}
-
-/*------------------------------------------------------------------------*/
-
-void Drupper::set_counterpart (DrupperClause * dc, Clause * c) {
-  assert (dc->variant_type () == LITERALS || !dc->counterpart);
-  if (c)
-    dc->set_variant (c);
-  else {
-    assert (dc->variant_type () == LITERALS && dc->literals.size ());
-  }
-  stats.counterparts++;
-}
-
-void Drupper::reset_counterpart (DrupperClause * dc) {
-  Clause * counterpart = dc->flip_variant ();
-  counterpart->drup_idx = 0;
-  stats.counterparts--;
 }
 
 /*------------------------------------------------------------------------*/
@@ -280,58 +209,37 @@ bool Drupper::trivially_satisfied (const vector <int> & c) {
   return false;
 }
 
-///TODO: Consider using lazy drupper clause allocation: allocate once the internal
-// clause is discarded from memory.
-void Drupper::append_lemma (DrupperClause * dc, Clause * c) {
-  assert (!dc->revive_at);
-  if (dc->deleted) stats.deleted++;
-  else stats.derived++;
-  if (c) {
-    if (dc->deleted) {
-      if (c->drup_idx) {
-        auto & pdc = proof[c->drup_idx - 1];
-        assert (pdc->clause () == c);
-        dc->revive_at = c->drup_idx;
-        reset_counterpart (proof[c->drup_idx - 1]);
-      }
-    } else {
-      c->drup_idx = proof.size () + 1;
-    }
+void Drupper::append_lemma (DrupperClause * dc) {
+  assert (dc && dc->counterpart);
+  if (dc->deleted)
+    stats.deleted++;
+  else {
+    stats.derived++;
+    assert (!dc->counterpart->drup_idx);
+    dc->counterpart->drup_idx = proof.size () + 1;
   }
-  set_counterpart (dc, dc->deleted ? 0 : c);
   proof.push_back (dc);
 }
 
 void Drupper::append_failed (const vector<int> & c) {
-  append_lemma (new DrupperClause (c), 0);
-  append_lemma (new DrupperClause (c, true), 0);
-  int i = proof.size () - 1;
-  proof[i]->revive_at = i;
+  Clause * mc = new_clause (c);
+  append_lemma (new DrupperClause (mc));
+  mc->garbage = true;
+  append_lemma (new DrupperClause (mc, true));
 }
 
 void Drupper::revive_clause (int i) {
   START (drup_revive);
   assert (i >= 0 && i < proof.size ());
   DrupperClause * dc = proof[i];
-  assert (dc->deleted);
-  const auto & literals = dc->lits ();
-  assert (literals.size () > 1);
-  for (int j : literals)
-    if (internal->flags (j).eliminated ())
-      internal->reactivate (j);
-  Clause * c = new_clause (literals);
+  assert (dc->deleted && dc->counterpart);
+  Clause * c = dc->counterpart;
+  assert (c->garbage);
+  for (int lit : *c)
+    if (internal->flags (lit).eliminated ())
+      internal->reactivate (lit);
+  c->garbage = false;
   internal->watch_clause (c);
-  if (dc->revive_at) {
-    int j = dc->revive_at - 1;
-#ifndef NDEBUG
-    assert (j < i && j >= 0);
-    assert (!proof[j]->revive_at);  // Are chains even possible?
-    assert (!proof[j]->deleted);
-#endif
-    set_counterpart (proof[j], c);
-  }
-  set_counterpart (proof[i], c);
-  stats.revived++;
   STOP (drup_revive);
 }
 
@@ -467,10 +375,11 @@ void Drupper::mark_conflict (bool overconstrained) {
       int i = proof.size () - 1;
       assert (i >= 0 && proof[i]->deleted);
       DrupperClause * dc = proof[i];
-      if (dc->literals.size () == 1)
-        set_counterpart (proof[i], new_unit_clause (dc->literals[0], false));
-      else
+      assert (dc->counterpart);
+      if (dc->counterpart->size > 1)
         revive_clause (i);
+      else
+        dc->counterpart->garbage = false;
       conflict = proof[i]->clause ();
     } else {
       conflict = internal->conflict;
@@ -545,9 +454,19 @@ void Drupper::conflict_analysis_core () {
   START (drup_analyze);
   Clause * conflict = internal->conflict;
   assert(conflict);
+  for (int l : *conflict)
+    assert (internal->val (l)  < 0);
   mark_core (conflict);
 
   auto got_value_by_propagation = [this](int lit) {
+    if (!internal->val (lit)) {
+      Clause * c = internal->var (lit).reason;
+      printf ("%d <-- (%lu) ", lit, internal->var (lit).reason);
+      for (int l : *c)
+        printf ("%d ", l);
+      printf ("\n");
+      assert (0);
+    }
     assert (internal->val (lit) != 0);
 #ifndef NDEBUG
     int trail = internal->var (lit).trail;
@@ -563,6 +482,7 @@ void Drupper::conflict_analysis_core () {
   for (int i = 0; i < conflict->size; i++)
   {
     int lit = conflict->literals[i];
+    assert (internal->val (lit) < 0);
     Var & v = internal->var(lit);
     assert (v.level > 0 || v.reason);
     if (got_value_by_propagation (lit))
@@ -635,6 +555,13 @@ void Drupper::mark_core_trail_antecedents () {
 }
 
 void Drupper::unmark_core_clauses () {
+  for (auto & dc : proof) {
+    if (!dc->deletion () || dc->clause ()->dummy)
+      continue;
+    Clause * c = dc->clause ();
+    if (c->core)
+      c->core = false, stats.core--;
+  }
   for (Clause * c : internal->clauses)
     if (c->core)
       c->core = false, stats.core--;
@@ -681,9 +608,7 @@ void Drupper::reallocate () {
   for (DrupperClause * dc : proof) {
     Clause * c = dc->clause ();
     if (!dc->deleted) {
-      assert (c);
-      assert (!dc->revive_at);
-      assert (c->garbage);
+      assert (c && c->garbage);
       c->garbage = false;
       if (c->size > 1)
         internal->watch_clause (c);
@@ -696,7 +621,7 @@ void Drupper::reallocate () {
       Clause * c = dc->clause ();
       assert (c && !c->garbage);
       c->garbage = true;
-      assert (!is_on_trail (c) || c->size == 1);
+      // assert (!is_on_trail (c) || c->size == 1);
     }
   }
 
@@ -704,29 +629,6 @@ void Drupper::reallocate () {
     internal->protect_reasons ();
   internal->flush_all_occs_and_watches ();
   internal->unprotect_reasons ();
-
-#ifndef NDEBUG
-  int revived_units = 0;
-#endif
-  for (int i = proof.size () - 1; i >= 0; i--) {
-    DrupperClause * dc = proof[i];
-    if (dc->deleted) {
-      Clause * c = dc->clause ();
-      assert (c && c->garbage);
-      reset_counterpart (dc);
-      if (dc->revive_at)
-        reset_counterpart (proof[dc->revive_at - 1]); // No need to fill the literals here?
-      if (c->size > 1)
-        delete [] (char*) c;
-#ifndef NDEBUG
-      else revived_units++;
-#endif
-    }
-  }
-#ifndef NDEBUG
-  assert (revived_units < 2);
-#endif
-  clauses.clear ();
 }
 
 void Drupper::reconstruct (const unsigned proof_sz) {
@@ -750,30 +652,9 @@ void Drupper::check_environment () const {
   for (unsigned i = 0; i < proof.size(); i++) {
     DrupperClause * dc = proof[i];
     assert (dc);
-    if (dc->deleted) {
-      assert (dc->variant_type () == LITERALS);
-      assert (dc->variant_type () == LITERALS && dc->literals.size ());
-      if (dc->revive_at) {
-        assert (dc->revive_at <= proof.size ());
-        assert (dc->revive_at > 0);
-        assert (!proof[dc->revive_at-1]->revive_at);
-        assert (!proof[dc->revive_at-1]->deleted);
-        assert (proof[dc->revive_at-1]->variant_type () == LITERALS);
-        assert (proof[dc->revive_at-1]->literals.size ());
-      }
-    } else {
-      assert (dc->variant_type () == CLAUSE || dc->literals.size ());
-    }
-    if (dc->variant_type () == CLAUSE) {
-      Clause * c = dc->clause ();
-      if (!dc->deleted && c && c->garbage) {
-        ///NOTE: See the discussion in 'propagate' on avoiding to eagerly trace binary
-        // clauses as deleted (produce 'd ...' lines) as soon they are marked
-        // garbage.
-        assert (c->size == 2);
-        assert (0 && "remove this if you are actually delaying the trace of garbage binaries");
-      }
-    }
+    Clause * c = dc->counterpart;
+    assert (c);
+    assert (!dc->deleted || c->garbage);
   }
 #endif
 }
@@ -814,7 +695,7 @@ void Drupper::dump_clause (const Clause * c) const {
 
 void Drupper::dump_clause (const DrupperClause * dc) const {
   assert (dc);
-  for (int i : dc->literals)
+  for (int i : *dc->counterpart)
     printf ("%d ", i);
   printf ("\n");
 }
@@ -830,18 +711,12 @@ void Drupper::dump_proof () const {
   for (int i = proof.size () - 1; i >= 0; i--) {
     auto & dc = proof[i];
     printf ("(%d) %s: ", i, dc->deleted ? "deleted" : "       ");
-    if (dc->variant_type () == LITERALS) {
-      auto & lits = dc->literals;
-      for (int l : lits)
-        printf ("%d ", l);
-    } else {
-      Clause * c = proof[i]->clause ();
-      printf ("c: ");
-      if (!c) printf ("0 ");
-      else {
-        for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
-        printf ("%s", c->garbage ? "(garbage)" : "");
-      }
+    Clause * c = proof[i]->clause ();
+    printf ("c (%lu): ", c);
+    if (!c) printf ("0 ");
+    else {
+      for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+      printf ("%s", c->garbage ? "(garbage)" : "");
     }
     printf ("\n");
   }
@@ -959,7 +834,7 @@ void Drupper::add_derived_clause (Clause * c) {
   assert (!validating);
   START (drup_inprocess);
   LOG (c, "DRUPPER derived clause notification");
-  append_lemma (new DrupperClause (), c);
+  append_lemma (new DrupperClause (c));
   STOP (drup_inprocess);
 }
 
@@ -975,7 +850,7 @@ void Drupper::add_derived_unit_clause (const int lit, bool original) {
     internal->var(lit).reason = c = new_unit_clause (lit, original);
   if (!original) {
     c = !c ? new_unit_clause (lit, original) : c;
-    append_lemma (new DrupperClause (), c);
+    append_lemma (new DrupperClause (c));
   }
   assert (internal->var(lit).reason->literals[0] == lit);
   STOP (drup_inprocess);
@@ -1007,15 +882,17 @@ void Drupper::add_updated_clause (Clause * c) {
   assert (!validating && c);
   START (drup_inprocess);
   LOG (c, "DRUPPER updated");
-  unsigned revive_at = 0;
+  vector<int> tmp; for (int l : *c) tmp.push_back (l);
+  Clause * mc = new_clause (tmp);
+  mc->garbage = true;
+  mc->drup_idx = c->drup_idx;
   if (c->drup_idx) {
-    revive_at = c->drup_idx;
-    assert (proof[revive_at - 1]->clause () == c);
-    reset_counterpart (proof[revive_at - 1]);
+    assert (proof[c->drup_idx - 1]->clause () == c);
+    proof[c->drup_idx - 1]->counterpart = mc;
+    c->drup_idx = 0;
   }
-  append_lemma (new DrupperClause (), c);
-  append_lemma (new DrupperClause (c, true), 0);
-  proof[proof.size ()-1]->revive_at = revive_at;
+  append_lemma (new DrupperClause (c));
+  append_lemma (new DrupperClause (mc, true));
   STOP (drup_inprocess);
 }
 
@@ -1068,7 +945,10 @@ void Drupper::delete_clause (const vector<int> & c, bool original) {
       // revived.
       swap_falsified_literals_right (internal, modified);
     }
-    append_lemma (new DrupperClause (modified, true), 0);
+    Clause * mc = c.size () > 1 ? new_clause (modified)
+                  : new_unit_clause (modified[0], original);
+    mc->garbage = true;
+    append_lemma (new DrupperClause (mc, true));
   }
   STOP (drup_inprocess);
 }
@@ -1078,21 +958,19 @@ void Drupper::delete_clause (Clause * c) {
   assert (!validating);
   START (drup_inprocess);
   LOG (c, "DRUPPER clause deletion notification");
-  append_lemma (new DrupperClause (c, true), c);
+  append_lemma (new DrupperClause (c, true));
   STOP (drup_inprocess);
 }
 
 /*------------------------------------------------------------------------*/
 
 void Drupper::update_moved_counterparts () {
+  assert (0);
   if (isolated) return;
   assert (!validating);
   START (drup_inprocess);
   for (unsigned i = 0; i < proof.size(); i++) {
     auto & dc = proof[i];
-
-    if (dc->deleted || dc->variant_type () == LITERALS)
-      continue;
 
     Clause * c = dc->clause ();
     if (!c->moved)
@@ -1100,13 +978,10 @@ void Drupper::update_moved_counterparts () {
 
 #ifndef NDEBUG
     assert (c->copy && c != c->copy);
-    assert (c->drup_idx);
-    assert (c->copy->drup_idx);
+    assert (c->copy->drup_idx == c->drup_idx);
 #endif
 
-    c->copy->drup_idx = c->drup_idx;
-    reset_counterpart (dc);
-    set_counterpart (dc, c->copy);
+    dc->counterpart = c->copy;
   }
   STOP (drup_inprocess);
 }
@@ -1123,6 +998,9 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   assert (!validating && !isolated && !setup_internal_options ());
   check_environment ();
 
+  // dump_proof ();
+  // dump_trail ();
+
   // Mark the conflict and its reasons as core.
   const unsigned proof_sz = proof.size ();
   mark_conflict (overconstrained);
@@ -1136,12 +1014,10 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
 
   // Main trimming loop
   for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
+
     auto & dc = proof[i];
-    bool deleted = dc->deleted;
 
-    assert (!deleted || dc->variant_type () == LITERALS);
-
-    if (deleted) {
+    if (dc->deletion ()) {
       revive_clause (i);
       continue;
     }

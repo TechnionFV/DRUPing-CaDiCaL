@@ -56,7 +56,8 @@ Internal::Internal ()
 Internal::~Internal () {
   if (drupper) delete drupper, drupper = 0;
   for (const auto & c : clauses)
-    delete_clause (c);
+    if (!c->dummy)
+      delete_clause (c);
   if (proof) delete proof;
   if (tracer) delete tracer;
   if (checker) delete checker;
@@ -208,7 +209,7 @@ int Internal::cdcl_loop_with_inprocessing () {
       break;
     else if (restarting ()) restart ();      // restart by backtracking
     else if (rephasing ()) rephase ();       // reset variable phases
-    else if (reducing ()) reduce ();         // collect useless clauses
+    // else if (reducing ()) reduce ();         // collect useless clauses
     else if (probing ()) probe ();           // failed literal probing
     else if (subsuming ()) subsume ();       // subsumption algorithm
     else if (eliminating ()) elim ();        // variable elimination
