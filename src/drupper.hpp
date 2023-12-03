@@ -41,14 +41,30 @@ Limitations:
 class Clause;
 class Drupper;
 
+enum DCVariant {
+  CLAUSE =    0,
+  LITERALS =  1
+};
+
 class DrupperClause {
+  bool variant:1;
 public:
   bool deleted:1;
-  Clause * counterpart;
+  unsigned revive_at;
+  union {
+    Clause * counterpart;
+    vector<int> literals;
+  };
+  DrupperClause (vector<int> c, bool deletion = false);
   DrupperClause (Clause * c, bool deletion = false);
-  ~DrupperClause () = default;
+  ~DrupperClause ();
+  DCVariant variant_type () const;
+  void destroy_variant ();
+  void set_variant (Clause *);
+  // void set_variant (const vector<int> &);
+  Clause * flip_variant ();
   Clause * clause ();
-  bool deletion () const;
+  vector<int> & lits ();
 };
 
 struct lock_scope {
@@ -120,11 +136,11 @@ class Drupper {
 
   void check_environment () const;
   void dump_clauses (bool active = false) const;
-  void dump_clause (const Clause *) const;
-  void dump_clause (const DrupperClause *) const;
-  void dump_clause (const vector <int> &) const;
-  void dump_proof () const;
-  void dump_trail () const;
+  void dump_clause (Clause *);
+  void dump_clause (DrupperClause *);
+  void dump_clause (vector <int> &);
+  void dump_proof ();
+  void dump_trail ();
 
   bool core_is_unsat () const;
   void dump_core () const;
