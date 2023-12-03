@@ -50,7 +50,6 @@ class DrupperClause {
   bool variant:1;
 public:
   bool deleted:1;
-  unsigned revive_at;
   union {
     Clause * counterpart;
     vector<int> literals;
@@ -61,8 +60,6 @@ public:
   DCVariant variant_type () const;
   void destroy_variant ();
   void set_variant (Clause *);
-  // void set_variant (const vector<int> &);
-  Clause * flip_variant ();
   Clause * clause ();
   vector<int> & lits ();
 };
@@ -92,8 +89,9 @@ class Drupper {
   //
   vector<DrupperClause *> proof;
 
-  vector<Clause *> clauses;
+  Clause * new_clause (Clause *);
   Clause * new_clause (const vector<int> &);
+
   vector<Clause *> unit_clauses;
   Clause * new_unit_clause (const int lit, bool original);
 
@@ -142,7 +140,7 @@ class Drupper {
   void dump_proof ();
   void dump_trail ();
 
-  bool core_is_unsat () const;
+  bool core_is_unsat () ;
   void dump_core () const;
   vector<int> extract_core_literals () const;
 
