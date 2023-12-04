@@ -41,27 +41,13 @@ Limitations:
 class Clause;
 class Drupper;
 
-enum DCVariant {
-  CLAUSE =    0,
-  LITERALS =  1
-};
-
 class DrupperClause {
-  bool variant:1;
 public:
   bool deleted:1;
-  union {
-    Clause * counterpart;
-    vector<int> literals;
-  };
-  DrupperClause (vector<int> c, bool deletion = false);
+  Clause * counterpart;
   DrupperClause (Clause * c, bool deletion = false);
-  ~DrupperClause ();
-  DCVariant variant_type () const;
-  void destroy_variant ();
-  void set_variant (Clause *);
+  ~DrupperClause () = default;
   Clause * clause ();
-  vector<int> & lits ();
 };
 
 struct lock_scope {
@@ -96,11 +82,9 @@ class Drupper {
   Clause * new_unit_clause (const int lit, bool original);
 
   Clause * failed_constraint;
-  bool core_units;
   bool isolated;
   bool validating;
   File * file;
-  bool core_first;
 
   bool trivially_satisfied (const vector <int> &);
   void append_lemma (DrupperClause * dc);
