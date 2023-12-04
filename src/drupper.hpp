@@ -99,11 +99,9 @@ class Drupper {
   Clause * new_unit_clause (const int lit, bool original);
 
   Clause * failed_constraint;
-  bool core_units;
   bool isolated;
   bool validating;
   File * file;
-  bool core_first;
 
   void set_counterpart (DrupperClause * dc, Clause * c);
   void reset_counterpart (DrupperClause *);
