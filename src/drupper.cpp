@@ -729,12 +729,6 @@ void Drupper::reallocate () {
   clauses.clear ();
 }
 
-///NOTE: In typical scenarios, once the formula undergoes trimming in primary applications, the
-// solver ceases further solving efforts. Nevertheless, in cases where the user desires to persist
-// with solving post-trimming, it becomes necessary to restore the solver's state.
-// This process involves:
-// 1) Removing marks from core clauses to permit formula trimming anew (useful for testing purposes).
-// 2) Connecting detached clauses again and deallocating resources that have been allocated during trim().
 void Drupper::reconstruct (const unsigned proof_sz) {
   lock_scope isolate (isolated);
   START (drup_reconstruct);
@@ -1174,17 +1168,14 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
     }
   }
 
-  internal->report ('M');
-
   shrink_internal_trail (trail_sz);
   mark_core_trail_antecedents ();
 
+  internal->report ('M');
+
   {
-    // This is a good point to dump core as garbage
-    // core clauses will be removed later.
-    // ```
+    // This is a good point to dump core as garbage core clauses will be removed later.
     dump_core ();
-    // ```
     #ifndef NDEBUG
       // Ensure the set of all core clauses is unsatisfiable
       if (settings.check_core)
@@ -1192,18 +1183,24 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
     #endif
   }
 
-  optional<vector<int>> res = {};
+  optional<vector<int>> opt_core_lits = {};
 
   if (settings.extract_core_literals)
-    res = extract_core_literals ();
+    opt_core_lits = extract_core_literals ();
 
+  ///NOTE: In typical scenarios, once the formula undergoes trimming in primary applications, the
+  // solver ceases further solving efforts. Nevertheless, in cases where the user desires to persist
+  // with solving post-trimming, it becomes necessary to restore the solver's state.
+  // This process involves:
+  // 1) Removing marks from core clauses to permit formula trimming anew (useful for testing purposes).
+  // 2) Connecting detached clauses again and deallocating resources that have been allocated during trim().
   if (settings.reconstruct)
     reconstruct (proof_sz);
 
   restore_trail ();
 
   STOP (drup_trim);
-  return res;
+  return opt_core_lits;
 }
 
 void Drupper::sort_watches (const int lit) {
