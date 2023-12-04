@@ -127,8 +127,8 @@ Drupper::~Drupper () {
 void Drupper::set (const char * setting, bool val) {
   if (!strcmp (setting, "core_units"))
     settings.core_units = val;
-  else if (!strcmp (setting, "unmark_core"))
-    settings.unmark_core = val;
+  else if (!strcmp (setting, "reconstruct"))
+    settings.reconstruct = val;
   else if (!strcmp (setting, "core_first"))
     settings.core_first = val;
   else if (!strcmp (setting, "check_core"))
@@ -648,7 +648,7 @@ void Drupper::unmark_core_clauses () {
 }
 
 void Drupper::restore_trail () {
-  assert (isolated);
+  lock_scope isolate (isolated);
   // Restoring the trail is done with respect to the order of literals.
   // Each unit is allocated in the same order it's pushed the trail.
   for (Clause * c : unit_clauses) {
@@ -729,15 +729,19 @@ void Drupper::reallocate () {
   clauses.clear ();
 }
 
+///NOTE: In typical scenarios, once the formula undergoes trimming in primary applications, the
+// solver ceases further solving efforts. Nevertheless, in cases where the user desires to persist
+// with solving post-trimming, it becomes necessary to restore the solver's state.
+// This process involves:
+// 1) Removing marks from core clauses to permit formula trimming anew (useful for testing purposes).
+// 2) Connecting detached clauses again and deallocating resources that have been allocated during trim().
 void Drupper::reconstruct (const unsigned proof_sz) {
   lock_scope isolate (isolated);
   START (drup_reconstruct);
   save_core_phase_stats ();
-  if (settings.unmark_core)
-    unmark_core_clauses ();
+  unmark_core_clauses ();
   reallocate ();
   clear_failing (proof_sz);
-  restore_trail ();
   collect (internal);
   STOP (drup_reconstruct);
 }
@@ -1193,7 +1197,10 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   if (settings.extract_core_literals)
     res = extract_core_literals ();
 
-  reconstruct (proof_sz);
+  if (settings.reconstruct)
+    reconstruct (proof_sz);
+
+  restore_trail ();
 
   STOP (drup_trim);
   return res;

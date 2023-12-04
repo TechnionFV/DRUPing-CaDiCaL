@@ -168,14 +168,14 @@ class Drupper {
   struct Settings {
 
     bool core_units:1;              // mark trail reason units as core
-    bool unmark_core:1;             // unmark core clauses after trim
     bool check_core:1;              // assert the set of core literals is unsat (under debug mode only)
     bool extract_core_literals:1;   // once formula have been trimmed, trim () will return core literals
     bool core_first:1;              // sorts watches to propagate core literals first during trim
+    bool reconstruct:1;             // reconstruct the solver state after trim
 
     Settings () { // default
       core_units = extract_core_literals = core_first = false;
-      unmark_core = check_core = true;
+      check_core = reconstruct = true;
     }
 
   } settings;
