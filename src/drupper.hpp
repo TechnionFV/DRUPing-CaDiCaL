@@ -51,10 +51,12 @@ class DrupperClause {
 public:
   bool deleted:1;
   unsigned revive_at:30;
+private:
   union {
     Clause * counterpart;
-    vector<int> literals;
+    vector<int> * literals;
   };
+public:
   DrupperClause (bool deletion = false, bool failing = false);
   DrupperClause (vector<int> c, bool deletion = false, bool failing = false);
   DrupperClause (Clause * c, bool deletion = false, bool failing = false);

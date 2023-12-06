@@ -29,7 +29,7 @@ DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 {
   assert (c.size ());
   variant = LITERALS;
-  new (&literals) std::vector<int>(c);
+  literals = new std::vector<int>(c);
 };
 
 DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
@@ -38,9 +38,9 @@ DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
 {
   assert (c && c->size);
   variant = LITERALS;
-  new (&literals) std::vector<int>();
+  literals = new std::vector<int>();
   for (int l : *c)
-    literals.push_back (l);
+    literals->push_back (l);
 };
 
 DrupperClause::~DrupperClause () {
@@ -55,7 +55,7 @@ void DrupperClause::destroy_variant () {
   if (variant_type () == CLAUSE)
     counterpart = 0;
   else
-    literals.~vector();
+    delete literals;
 }
 
 void DrupperClause::set_variant (Clause * c) {
@@ -67,18 +67,16 @@ void DrupperClause::set_variant (Clause * c) {
 void DrupperClause::set_variant (const vector<int> & c) {
   destroy_variant ();
   variant = LITERALS;
-  new (&literals) std::vector<int>(c);
-  literals = c;
+  literals = new std::vector<int>(c);
 }
 
 Clause * DrupperClause::flip_variant () {
   assert (variant_type () == CLAUSE);
   Clause * ref = counterpart;
   assert (ref);
-  destroy_variant ();
   set_variant (vector<int> ());
-  for (int l : *ref)
-    literals.push_back (l);
+  for (int lit : *ref)
+    literals->push_back (lit);
   return ref;
 }
 
@@ -88,13 +86,13 @@ Clause * DrupperClause::clause () {
 }
 
 vector<int> & DrupperClause::lits () {
-  assert (variant_type () == LITERALS);
-  return literals;
+  assert (variant_type () == LITERALS && literals);
+  return *literals;
 }
 
 const vector<int> & DrupperClause::lits () const {
-  assert (variant_type () == LITERALS);
-  return literals;
+  assert (variant_type () == LITERALS && literals);
+  return *literals;
 }
 
 /*------------------------------------------------------------------------*/
