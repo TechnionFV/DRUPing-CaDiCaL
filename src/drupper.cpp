@@ -92,6 +92,11 @@ vector<int> & DrupperClause::lits () {
   return literals;
 }
 
+const vector<int> & DrupperClause::lits () const {
+  assert (variant_type () == LITERALS);
+  return literals;
+}
+
 /*------------------------------------------------------------------------*/
 
 Drupper::Drupper (Internal * i, File * f)
@@ -248,11 +253,11 @@ Clause * Drupper::new_unit_clause (const int lit, bool original) {
 /*------------------------------------------------------------------------*/
 
 void Drupper::set_counterpart (DrupperClause * dc, Clause * c) {
-  assert (dc->variant_type () == LITERALS || !dc->counterpart);
+  assert (dc->variant_type () == LITERALS || !dc->clause ());
   if (c)
     dc->set_variant (c);
   else {
-    assert (dc->variant_type () == LITERALS && dc->literals.size ());
+    assert (dc->variant_type () == LITERALS && dc->lits().size ());
   }
   stats.counterparts++;
 }
@@ -467,8 +472,8 @@ void Drupper::mark_conflict (bool overconstrained) {
       int i = proof.size () - 1;
       assert (i >= 0 && proof[i]->deleted);
       DrupperClause * dc = proof[i];
-      if (dc->literals.size () == 1)
-        set_counterpart (proof[i], new_unit_clause (dc->literals[0], false));
+      if (dc->lits ().size () == 1)
+        set_counterpart (proof[i], new_unit_clause (dc->lits ()[0], false));
       else
         revive_clause (i);
       conflict = proof[i]->clause ();
@@ -476,8 +481,8 @@ void Drupper::mark_conflict (bool overconstrained) {
       conflict = internal->conflict;
     }
     mark_core (conflict);
-    for (int i = 0; i < conflict->size; i++)
-      mark_conflict_lit (conflict->literals[i]);
+    for (int lit : *conflict)
+      mark_conflict_lit (lit);
   } else {
     if (internal->unsat_constraint && internal->constraint.size () > 1) {
       failed_constraint = new_clause (internal->constraint);
@@ -505,11 +510,9 @@ void Drupper::assume_negation (const Clause * lemma) {
   assert (internal->propagated == internal->trail.size ());
 
   vector <int> decisions;
-  for (int i = 0; i < lemma->size; i++) {
-    int lit = lemma->literals[i];
+  for (int lit : *lemma)
     if (!internal->val (lit))
       decisions.push_back (-lit);
-  }
 
   assert (decisions.size());
   internal->search_assume_multiple_decisions (decisions);
@@ -560,9 +563,8 @@ void Drupper::conflict_analysis_core () {
   ///TODO: Use internal->mark|ed () instead.
   unordered_set<int> seen;
 
-  for (int i = 0; i < conflict->size; i++)
+  for (int lit : *conflict)
   {
-    int lit = conflict->literals[i];
     Var & v = internal->var(lit);
     assert (v.level > 0 || v.reason);
     if (got_value_by_propagation (lit))
@@ -625,8 +627,8 @@ void Drupper::mark_core_trail_antecedents () {
     assert (reason);
     if (reason->core) {
       assert (reason->literals[0] == lit);
-      for (int j = 1; j < reason->size; j++)
-        mark_core (internal->var (reason->literals[j]).reason);
+      for (int lit : *reason)
+        mark_core (internal->var (lit).reason);
       internal->propagated = i;
       ///TODO: set internal->propagated2
     }
@@ -750,17 +752,17 @@ void Drupper::check_environment () const {
     assert (dc);
     if (dc->deleted) {
       assert (dc->variant_type () == LITERALS);
-      assert (dc->variant_type () == LITERALS && dc->literals.size ());
+      assert (dc->variant_type () == LITERALS && dc->lits ().size ());
       if (dc->revive_at) {
         assert (dc->revive_at <= proof.size ());
         assert (dc->revive_at > 0);
         assert (!proof[dc->revive_at-1]->revive_at);
         assert (!proof[dc->revive_at-1]->deleted);
         assert (proof[dc->revive_at-1]->variant_type () == LITERALS);
-        assert (proof[dc->revive_at-1]->literals.size ());
+        assert (proof[dc->revive_at-1]->lits ().size ());
       }
     } else {
-      assert (dc->variant_type () == CLAUSE || dc->literals.size ());
+      assert (dc->variant_type () == CLAUSE || dc->lits ().size ());
     }
     if (dc->variant_type () == CLAUSE) {
       Clause * c = dc->clause ();
@@ -803,16 +805,16 @@ void Drupper::dump_clauses (bool active) const {
 void Drupper::dump_clause (const Clause * c) const {
   if (!c) printf ("0 \n");
   else {
-    const int * lits = c->literals;
-    for (int i = 0; i < c->size; i++)
-      printf ("%d ", lits[i]);
+    for (int lit : *c)
+      printf ("%d ", lit);
     printf ("\n");
   }
 }
 
 void Drupper::dump_clause (const DrupperClause * dc) const {
   assert (dc);
-  for (int i : dc->literals)
+  const auto & lits = dc->lits ();
+  for (int i : lits)
     printf ("%d ", i);
   printf ("\n");
 }
@@ -829,7 +831,7 @@ void Drupper::dump_proof () const {
     auto & dc = proof[i];
     printf ("(%d) %s: ", i, dc->deleted ? "deleted" : "       ");
     if (dc->variant_type () == LITERALS) {
-      auto & lits = dc->literals;
+      auto & lits = dc->lits ();
       for (int l : lits)
         printf ("%d ", l);
     } else {
@@ -837,7 +839,7 @@ void Drupper::dump_proof () const {
       printf ("c: ");
       if (!c) printf ("0 ");
       else {
-        for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+        for (int lit : *c) printf ("%d ", lit);
         printf ("%s", c->garbage ? "(garbage)" : "");
       }
     }

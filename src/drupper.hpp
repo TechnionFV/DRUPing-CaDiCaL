@@ -50,7 +50,7 @@ class DrupperClause {
   bool variant:1;
 public:
   bool deleted:1;
-  unsigned revive_at;
+  unsigned revive_at:30;
   union {
     Clause * counterpart;
     vector<int> literals;
@@ -66,6 +66,7 @@ public:
   Clause * flip_variant ();
   Clause * clause ();
   vector<int> & lits ();
+  const vector<int> & lits () const;
 };
 
 struct lock_scope {
