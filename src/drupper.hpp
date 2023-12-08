@@ -57,7 +57,6 @@ private:
     vector<int> * literals;
   };
 public:
-  DrupperClause (bool deletion = false, bool failing = false);
   DrupperClause (vector<int> c, bool deletion = false, bool failing = false);
   DrupperClause (Clause * c, bool deletion = false, bool failing = false);
   ~DrupperClause ();
@@ -106,11 +105,8 @@ class Drupper {
   bool validating;
   File * file;
 
-  void set_counterpart (DrupperClause * dc, Clause * c);
-  void reset_counterpart (DrupperClause *);
-
   bool trivially_satisfied (const vector <int> &);
-  void append_lemma (DrupperClause * dc, Clause * c);
+  void append_lemma (DrupperClause * dc);
   void append_failed (const vector<int>  &);
   void revive_clause (int);
   void stagnate_clause (const int);
@@ -121,7 +117,7 @@ class Drupper {
 
   void undo_trail_literal (const int);
   void undo_trail_core (Clause * c, unsigned & trail_sz);
-  bool is_on_trail (Clause *);
+  bool is_on_trail (Clause *) const;
 
   void mark_core (Clause *);
   void mark_conflict_lit (const int);
@@ -202,6 +198,8 @@ public:
 
   void delete_clause (const vector<int> &, bool original = false);
   void delete_clause (Clause *);
+
+  void deallocate_clause (Clause *);
 
   void update_moved_counterparts ();
 
