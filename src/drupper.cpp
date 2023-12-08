@@ -298,6 +298,12 @@ void Drupper::append_lemma (DrupperClause * dc, Clause * c) {
         reset_counterpart (proof[c->drup_idx - 1]);
       }
     } else {
+#ifndef NDEBUG
+      // Ensure reason clauses are not deleted.
+      int lit = c->literals[0];
+      if (internal->fixed (lit) && internal->var (lit).reason == c)
+        assert (!c->garbage);
+#endif
       c->drup_idx = proof.size () + 1;
     }
   }
