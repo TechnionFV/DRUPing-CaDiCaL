@@ -555,13 +555,11 @@ void Drupper::conflict_analysis_core () {
   for (int i = internal->trail.size()-1; i > internal->control.back().trail; i--)
   {
     int lit = internal->trail[i];
-    Var & v = internal->var(lit);
-
     if (!seen.count (abs(lit)))
       continue;
     seen.erase (abs(lit));
 
-    Clause * c = v.reason;
+    Clause * c = internal->var(lit).reason;
     mark_core (c);
 
 #ifndef NDEBUG
@@ -658,26 +656,15 @@ void Drupper::clear_failing (const unsigned proof_sz) {
 }
 
 void Drupper::reallocate () {
+
   assert (isolated);
+
   for (DrupperClause * dc : proof) {
     Clause * c = dc->clause ();
-    if (!dc->deleted) {
-      assert (c);
-      assert (!dc->revive_at);
-      assert (c->garbage);
-      c->garbage = false;
-      if (c->size > 1)
-        internal->watch_clause (c);
-    }
-  }
-
-  for (int i = proof.size () - 1; i >= 0; i--) {
-    DrupperClause * dc = proof[i];
-    if (dc->deleted) {
-      Clause * c = dc->clause ();
-      assert (c && !c->garbage);
-      c->garbage = true;
-    }
+    assert (c);
+    c->garbage = dc->deleted;
+    if (!dc->deleted && c->size > 1)
+      internal->watch_clause (c);
   }
 
   if (!internal->protected_reasons)
@@ -693,17 +680,15 @@ void Drupper::reallocate () {
       dc->flip_variant ();
       if (dc->revive_at)
         proof[dc->revive_at - 1]->set_variant (0); // No need to fill the literals here?
-      if (c->size > 1 && !c->collect ())
-        delete [] (char*) c;
     }
   }
+
   clauses.clear ();
 }
 
 void Drupper::reconstruct (const unsigned proof_sz) {
   lock_scope isolate (isolated);
   START (drup_reconstruct);
-  save_core_phase_stats ();
   unmark_core_clauses ();
   reallocate ();
   clear_failing (proof_sz);
@@ -1162,20 +1147,21 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   mark_core_trail_antecedents ();
 
   internal->report ('M');
+
+  optional<vector<int>> opt_core_lits;
+
   {
-    // This is a good point to dump core as garbage core clauses will be removed later.
+    // This is a good point to dump core as garbage core clauses will be collected later.
+    save_core_phase_stats ();
     dump_core ();
-    #ifndef NDEBUG
-      // Ensure the set of all core clauses is unsatisfiable
-      // if (settings.check_core)
-      //   assert (core_is_unsat ());
-    #endif
+#ifndef NDEBUG
+    // Ensure the set of all core clauses is unsatisfiable
+    if (settings.check_core)
+      assert (core_is_unsat ());
+#endif
+    if (settings.extract_core_literals)
+      opt_core_lits = extract_core_literals ();
   }
-
-  optional<vector<int>> opt_core_lits = {};
-
-  if (settings.extract_core_literals)
-    opt_core_lits = extract_core_literals ();
 
   ///NOTE: In typical scenarios, once the formula undergoes trimming in primary applications, the
   // solver ceases further solving efforts. Nevertheless, in cases where the user desires to persist
