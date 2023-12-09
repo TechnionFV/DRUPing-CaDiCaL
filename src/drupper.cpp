@@ -100,8 +100,8 @@ Drupper::Drupper (Internal * i, File * f)
   //
   memset (&stats, 0, sizeof (stats));
 
-  // if (internal->opts.drupdumpcore && !f)
-  //   file = File::write (internal, stdout, "<stdout>");
+  if (internal->opts.drupdumpcore && !f)
+    file = File::write (internal, stdout, "<stdout>");
 }
 
 Drupper::~Drupper () {
@@ -667,6 +667,10 @@ void Drupper::reallocate () {
       internal->watch_clause (c);
   }
 
+  ///FIXME: Garbage clauses will be deallocated from memory only once all variant wrappers are converted to integer literals.
+  // This implies that, during this process, each garbage clause will retain an object reference in memory alongside the literals,
+  // potentially causing a significant memory peak.
+
   if (!internal->protected_reasons)
     internal->protect_reasons ();
   internal->flush_all_occs_and_watches ();
@@ -1042,15 +1046,13 @@ void Drupper::deallocate_clause (Clause * c) {
   LOG (c, "DRUPPER clause deallocation notification");
   assert (c && c->drup_idx && c->drup_idx <= proof.size());
   auto & dc = proof[c->drup_idx-1];
-  // if (dc->variant_type () == CLAUSE) {
-    assert (dc->clause () == c);
-    dc->flip_variant ();
-    if (dc->revive_at) {
-      auto & pdc = proof[dc->revive_at - 1];
-      assert (pdc->clause () == c && !pdc->deleted);
-      pdc->set_variant (0);
-    }
-  // }
+  assert (dc->clause () == c);
+  dc->flip_variant ();
+  if (dc->revive_at) {
+    auto & pdc = proof[dc->revive_at - 1];
+    assert (pdc->clause () == c && !pdc->deleted);
+    pdc->set_variant (0);
+  }
   STOP (drup_inprocess);
 }
 
