@@ -309,13 +309,13 @@ void Checker::print_stats () {
 void Drupper::print_stats () {
   SECTION ("drupper statistics");
 
-  auto all = internal->stats.added.total;
+  auto all = internal->stats.current.total;
   auto drup = stats.deleted + stats.derived;
 
-  MSG ("proof:           %15" PRId64 "   %10.2f %%  of all clauses", drup, percent (drup, all));
+  MSG ("proof:           %15" PRId64 "", drup);
   MSG ("derived:         %15" PRId64 "   %10.2f %%  of proof size", stats.derived, percent (stats.derived, drup));
   MSG ("deleted:         %15" PRId64 "   %10.2f %%  of proof size", stats.deleted, percent (stats.deleted, drup));
-  MSG ("counterparts:    %15" PRId64 "   %10.2f %%  of proof size", stats.counterparts, percent (stats.counterparts, drup));
+  MSG ("revived:         %15" PRId64 "   %10.2f %%  of proof size", stats.revived, percent (stats.revived, drup));
   MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.units, percent (stats.units, all));
   for (unsigned i = 1; i <= stats.cores.size (); i++)
     MSG ("phase %d core:        %11" PRId64 "   %10.2f %%  of all clauses", i, stats.cores[i-1], percent (stats.cores[i-1], all));

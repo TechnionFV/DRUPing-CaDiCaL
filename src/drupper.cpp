@@ -122,8 +122,8 @@ void Drupper::set (const char * setting, bool val) {
     settings.core_units = val;
   else if (!strcmp (setting, "reconstruct"))
     settings.reconstruct = val;
-  else if (!strcmp (setting, "core_first"))
-    settings.core_first = val;
+  else if (!strcmp (setting, "prefer_core"))
+    settings.prefer_core = val;
   else if (!strcmp (setting, "check_core"))
     settings.check_core = val;
   else if (!strcmp (setting, "extract_core_literals"))
@@ -501,7 +501,7 @@ void Drupper::assume_negation (const Clause * lemma) {
 bool Drupper::propagate_conflict () {
   START (drup_propagate);
   assert(!internal->conflict);
-  if (internal->propagate (settings.core_first))
+  if (internal->propagate (settings.prefer_core))
   {
     START (drup_repropagate);
     {
@@ -1089,6 +1089,7 @@ void Drupper::update_moved_counterparts () {
 /*------------------------------------------------------------------------*/
 
 optional<vector<int>> Drupper::trim (bool overconstrained) {
+
   START (drup_trim);
   LOG ("DRUPPER trim");
 
@@ -1152,8 +1153,8 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
 
   optional<vector<int>> opt_core_lits;
 
+  ///NOTE: This is a good point to handle core clauses as some might be collected later.
   {
-    // This is a good point to dump core as garbage core clauses will be collected later.
     save_core_phase_stats ();
     dump_core ();
 #ifndef NDEBUG
@@ -1180,7 +1181,7 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   return opt_core_lits;
 }
 
-void Drupper::sort_watches (const int lit) {
+void Drupper::prefer_core_watches (const int lit) {
   auto & ws = internal->watches (lit);
   int l = 0, h = ws.size () - 1;
   while (l < h) {

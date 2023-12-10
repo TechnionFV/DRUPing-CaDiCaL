@@ -178,7 +178,7 @@ bool Internal::propagate (bool core_first) {
 
     if (core_first) {
       assert (drupper);
-      drupper->sort_watches (lit);
+      drupper->prefer_core_watches (lit);
     }
 
     Watches & ws = watches (lit);

@@ -155,10 +155,9 @@ class Drupper {
     int64_t derived;            // number of added derived clauses
     int64_t deleted;            // number of deleted clauses
     int64_t revived;            // number of revived clauses
-    int64_t counterparts;       // number of counterpart references
     int64_t units;              // number of unit clauses allcoated
-    int64_t core;               // number of core clauses in current phase
-    vector<int64_t> cores;      // number of core clauses for each phase
+    int64_t core;               // number of core clauses in current trim
+    vector<int64_t> cores;      // number of core clauses per trim
 
   } stats;
 
@@ -169,12 +168,15 @@ class Drupper {
     bool core_units:1;              // mark trail reason units as core
     bool check_core:1;              // assert the set of core literals is unsat (under debug mode only)
     bool extract_core_literals:1;   // once formula have been trimmed, trim () will return core literals
-    bool core_first:1;              // sorts watches to propagate core literals first during trim
+    bool prefer_core:1;              // sorts watches to propagate core literals first during trim
     bool reconstruct:1;             // reconstruct the solver state after trim
 
     Settings () { // default
-      core_units = extract_core_literals = core_first = false;
-      check_core = reconstruct = true;
+      core_units = false;
+      check_core = true;
+      extract_core_literals = false;
+      prefer_core = false;
+      reconstruct = true;
     }
 
   } settings;
@@ -205,7 +207,7 @@ public:
 
   optional<vector<int>> trim (bool overconstrained = false);
 
-  void sort_watches (const int);
+  void prefer_core_watches (const int);
 
   void print_stats ();
 };
