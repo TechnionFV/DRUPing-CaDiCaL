@@ -135,12 +135,9 @@ bool Drupper::setup_internal_options () {
   updated |= opts.chrono;
   updated |= opts.probe;
   updated |= opts.compact;
-  updated |= opts.vivify;
   opts.chrono = 0;
   opts.probe = 0;
   opts.compact = 0;
-  ///FIXME: ../interesting/vivify/red-*
-  opts.vivify = 0;
   return updated;
 }
 
@@ -874,6 +871,7 @@ void Drupper::add_derived_unit_clause (const int lit, bool original) {
     internal->var(lit).reason = c = new_unit_clause (lit, original);
   if (!original) {
     c = !c ? new_unit_clause (lit, original) : c;
+    internal->var(lit).reason = c;
     append_lemma (new DrupperClause (c));
   }
   assert (internal->var(lit).reason->literals[0] == lit);

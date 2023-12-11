@@ -38,9 +38,6 @@ Limitations:
 
 -----------------------------------------------------------------------------------*/
 
-class Clause;
-class Drupper;
-
 enum DCVariant {
   CLAUSE =    0,
   LITERALS =  1
@@ -130,7 +127,6 @@ class Drupper {
   void mark_core_trail_antecedents ();
   void unmark_core_clauses ();
   void restore_trail ();
-  void clear_failing (const unsigned);
   void reallocate (const unsigned);
   void reconstruct (unsigned);
 
@@ -167,7 +163,7 @@ class Drupper {
     bool core_units:1;              // mark trail reason units as core
     bool check_core:1;              // assert the set of core literals is unsat (under debug mode only)
     bool extract_core_literals:1;   // once formula have been trimmed, trim () will return core literals
-    bool prefer_core:1;              // sorts watches to propagate core literals first during trim
+    bool prefer_core:1;             // sorts watches to propagate core literals first during trim
     bool reconstruct:1;             // reconstruct the solver state after trim
 
     Settings () { // default
