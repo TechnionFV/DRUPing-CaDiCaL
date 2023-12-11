@@ -111,8 +111,6 @@ Drupper::~Drupper () {
     delete (DrupperClause *) dc;
   for (const auto & c : unit_clauses)
     delete [] (char*) c;
-  for (const auto & c : clauses)
-    delete [] (char*) c;
   delete file;
 }
 /*------------------------------------------------------------------------*/
@@ -148,52 +146,12 @@ bool Drupper::setup_internal_options () {
 
 /*------------------------------------------------------------------------*/
 
-Clause * Drupper::new_clause (const vector<int> & clause) {
-
-  assert (clause.size () <= (size_t) INT_MAX);
-  const int size = (int) clause.size ();
-  assert (size >= 2);
-
-  // Determine whether this clauses should be kept all the time.
-  //
-  bool keep = true;
-
-  size_t bytes = Clause::bytes (size);
-  Clause * c = (Clause *) new char[bytes];
-
-  c->conditioned = false;
-  c->covered = false;
-  c->enqueued = false;
-  c->frozen = false;
-  c->garbage = false;
-  c->gate = false;
-  c->hyper = false;
-  c->instantiated = false;
-  c->keep = keep;
-  c->moved = false;
-  c->reason = false;
-  c->redundant = true;
-  c->transred = false;
-  c->subsume = false;
-  c->vivified = false;
-  c->vivify = false;
-  c->core = false;
-  c->drup_idx = 0;
-  c->used = 0;
-
-  c->glue = 0;
-  c->size = size;
-  c->pos = 2;
-
-  for (int i = 0; i < size; i++) c->literals[i] = clause[i];
-
-  // Just checking that we did not mess up our sophisticated memory layout.
-  // This might be compiler dependent though. Crucial for correctness.
-  //
-  assert (c->bytes () == bytes);
-
-  clauses.push_back (c);
-
+Clause * Drupper::new_clause (const vector<int> & lits) {
+  auto & clause = internal->clause;
+  assert (clause.empty ());
+  clause = lits;
+  Clause * c = internal->new_clause (true);
+  clause.clear ();
   return c;
 }
 
@@ -255,9 +213,8 @@ bool Drupper::trivially_satisfied (const vector <int> & c) {
   return false;
 }
 
-///TODO: Consider using lazy drupper clause allocation: allocate once the internal
-// clause is discarded from memory.
 void Drupper::append_lemma (DrupperClause * dc) {
+  assert(proof.size () <= (1u << 30) - 1 && "Possible overflow in revive_at/drup_idx members!");
   if (dc->deleted) stats.deleted++;
   else stats.derived++;
   if (dc->variant_type () == CLAUSE) {
@@ -293,15 +250,17 @@ void Drupper::revive_clause (int i) {
   Clause * c = nullptr;
   if (dc->variant_type () == CLAUSE) {
     c = dc->clause ();
-    assert (c->garbage);
-    c->garbage = false;
   } else {
     const auto & literals = dc->lits ();
     assert (literals.size () > 1);
     c = new_clause (literals);
+    c->drup_idx = i + 1;
+    lock_scope isolate (isolated);
+    internal->mark_garbage (c);
     dc ->set_variant (c);
   }
-  assert (c);
+  assert (c && c->garbage);
+  c->garbage = false;
   internal->watch_clause (c);
   for (int lit : *c)
     if (internal->flags (lit).eliminated ())
@@ -329,6 +288,7 @@ void Drupper::stagnate_clause (const int i) {
   }
   assert (!c->moved);
   c->garbage = true;
+  ///TODO: Avoid calling unwatch_clause () and try flushing watches before propagating instead.
   if (c->size > 1)
     internal->unwatch_clause (c);
 }
@@ -465,6 +425,9 @@ void Drupper::mark_conflict (bool overconstrained) {
   } else {
     if (internal->unsat_constraint && internal->constraint.size () > 1) {
       failed_constraint = new_clause (internal->constraint);
+      lock_scope isolate (isolated);
+      internal->mark_garbage (failed_constraint);
+      failed_constraint->garbage = false;
       mark_core (failed_constraint);
       internal->watch_clause (failed_constraint);
     }
@@ -617,13 +580,10 @@ void Drupper::unmark_core_clauses () {
   for (Clause * c : internal->clauses)
     if (c->core)
       c->core = false, stats.core--;
-  for (Clause * c : clauses)
-    if (c->core)
-      c->core = false, stats.core--;
   for (Clause * c : unit_clauses)
     if (c->core)
       c->core = false, stats.core--;
-  // assert (stats.core == 0);
+  assert (stats.core == 0);
 }
 
 void Drupper::restore_trail () {
@@ -638,24 +598,7 @@ void Drupper::restore_trail () {
   }
 }
 
-void Drupper::clear_failing (const unsigned proof_sz) {
-  if (failed_constraint) {
-    internal->unwatch_clause (failed_constraint);
-    delete [] (char *) failed_constraint;
-    failed_constraint = 0;
-  }
-  if (proof.size () == proof_sz) return;
-  int pop = proof.size () - proof_sz;
-  while (pop--) {
-    if (proof.back ()->deleted)
-      stats.deleted--;
-    else
-      stats.derived--;
-    proof.pop_back ();
-  };
-}
-
-void Drupper::reallocate () {
+void Drupper::reallocate (const unsigned proof_sz) {
 
   assert (isolated);
 
@@ -667,36 +610,56 @@ void Drupper::reallocate () {
       internal->watch_clause (c);
   }
 
+  if (failed_constraint) {
+    failed_constraint->garbage = true;
+    failed_constraint = 0;
+  }
+
+  if (proof.size () > proof_sz)  {
+    int pop = proof.size () - proof_sz;
+    while (pop--) {
+      DrupperClause * dc = proof.back ();
+      Clause * c = dc->clause ();
+      assert (c->garbage);
+      c->drup_idx = 0;
+      if (dc->deleted) stats.deleted--;
+      else stats.derived--;
+      proof.pop_back ();
+      delete dc;
+    };
+  }
   ///FIXME: Garbage clauses will be deallocated from memory only once all variant wrappers are converted to integer literals.
   // This implies that, during this process, each garbage clause will retain an object reference in memory alongside the literals,
   // potentially causing a significant memory peak.
 
+  ///NOTE: Must not maintain garbage references anymore as they will be reallocated in the future.
   if (!internal->protected_reasons)
     internal->protect_reasons ();
   internal->flush_all_occs_and_watches ();
-  internal->unprotect_reasons ();
-
   for (int i = proof.size () - 1; i >= 0; i--) {
     DrupperClause * dc = proof[i];
     if (dc->deleted) {
       Clause * c = dc->clause ();
       assert (c && c->garbage);
+      assert (c->size > 1 || i == proof.size () - 1); // can be falsified original conflict
+      // if (c->reason) {
+      //   assert (c->size == 1 || c->drup_idx == i+1);
+      //   continue;
+      // }
+      c->drup_idx = 0;
       dc->flip_variant ();
       if (dc->revive_at)
-        proof[dc->revive_at - 1]->set_variant (0); // No need to fill the literals here?
+        proof[dc->revive_at - 1]->set_variant (0);
     }
   }
-
-  clauses.clear ();
+  internal->unprotect_reasons ();
 }
 
 void Drupper::reconstruct (const unsigned proof_sz) {
   lock_scope isolate (isolated);
   START (drup_reconstruct);
   unmark_core_clauses ();
-  reallocate ();
-  clear_failing (proof_sz);
-  collect (internal);
+  reallocate (proof_sz);
   STOP (drup_reconstruct);
 }
 
@@ -818,12 +781,6 @@ bool Drupper::core_is_unsat () const {
         s.add (*i);
       s.add (0);
     }
-  for (Clause * c : clauses)
-    if (c->core) {
-      for (int * i = c->begin (); i != c->end (); i++)
-        s.add (*i);
-      s.add (0);
-    }
   for (Clause * c : unit_clauses)
     if (c->core) {
       s.add (c->literals[0]);
@@ -852,12 +809,6 @@ void Drupper::dump_core () const {
         file->put (*i), file->put (' ');
       file->put ("0\n");
     }
-  for (Clause * c : clauses)
-    if (c->core) {
-      for (int * i = c->begin (); i != c->end (); i++)
-        file->put (*i), file->put (' ');
-      file->put ("0\n");
-    }
   for (Clause * c : unit_clauses)
     if (c->core) {
       file->put (c->literals[0]);
@@ -879,11 +830,6 @@ void Drupper::dump_core () const {
 vector<int> Drupper::extract_core_literals () const {
   vector<int> core_lits;
   for (Clause * c : internal->clauses)
-    if (c->core)
-      for (int l : *c)
-        if (!internal->flags (l).mark_core (true))
-          core_lits.push_back (l);
-  for (Clause * c : clauses)
     if (c->core)
       for (int l : *c)
         if (!internal->flags (l).mark_core (true))
@@ -1094,7 +1040,6 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   LOG ("DRUPPER trim");
 
   stats.solves++;
-
   save_scope<bool> recover_unsat (internal->unsat);
   assert (!validating && !isolated && !setup_internal_options ());
   check_environment ();
@@ -1103,12 +1048,11 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   const unsigned proof_sz = proof.size ();
   mark_conflict (overconstrained);
 
-  // collect (internal);
   internal->flush_all_occs_and_watches ();
-
   clean_conflict ();
   // 'trail_sz' is used for lazy shrinking of the trail.
   unsigned trail_sz = internal->trail.size();
+
   lock_scope trim_scope (validating);
 
   // Main trimming loop

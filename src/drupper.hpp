@@ -95,7 +95,6 @@ class Drupper {
   //
   vector<DrupperClause *> proof;
 
-  vector<Clause *> clauses;
   Clause * new_clause (const vector<int> &);
   vector<Clause *> unit_clauses;
   Clause * new_unit_clause (const int lit, bool original);
@@ -132,7 +131,7 @@ class Drupper {
   void unmark_core_clauses ();
   void restore_trail ();
   void clear_failing (const unsigned);
-  void reallocate ();
+  void reallocate (const unsigned);
   void reconstruct (unsigned);
 
   void check_environment () const;

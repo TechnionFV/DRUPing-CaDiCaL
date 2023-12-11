@@ -211,7 +211,7 @@ size_t Internal::shrink_clause (Clause * c, int new_size) {
 // reclaimed immediately.
 
 void Internal::deallocate_clause (Clause * c) {
-  if (drupper && !c->moved)
+  if (drupper && !c->moved && c->drup_idx)
     drupper->deallocate_clause (c);
   char * p = (char*) c;
   if (arena.contains (p)) return;
