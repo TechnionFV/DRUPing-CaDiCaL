@@ -54,8 +54,8 @@ private:
     vector<int> * literals;
   };
 public:
-  DrupperClause (vector<int> c, bool deletion = false, bool failing = false);
-  DrupperClause (Clause * c, bool deletion = false, bool failing = false);
+  DrupperClause (vector<int> c, bool deletion = false);
+  DrupperClause (Clause * c, bool deletion = false);
   ~DrupperClause ();
   DCVariant variant_type () const;
   void destroy_variant ();
@@ -67,12 +67,12 @@ public:
   const vector<int> & lits () const;
 };
 
+const unsigned COLOR_UNDEF = 0;
 
 class Color
 {
-  unsigned m_min:15, m_max:16;
+  unsigned m_min:16, m_max:16;
 public:
-  const unsigned UNDEF:1 = 0;
   Color ();
   Color (unsigned);
   bool undef () const;
@@ -123,8 +123,8 @@ class Drupper {
   bool trivially_satisfied (const vector <int> &);
   void append_lemma (DrupperClause * dc);
   void append_failed (const vector<int>  &);
-  void revive_clause (int);
-  void stagnate_clause (const int);
+  void revive_clause (const unsigned);
+  void stagnate_clause (const unsigned);
   void reactivate_fixed (int);
 
   void shrink_internal_trail (const unsigned);
@@ -137,7 +137,7 @@ class Drupper {
   void mark_core (Clause *);
   void mark_conflict_lit (const int);
   void mark_conflict (bool);
-  void mark_failing (const int);
+  void mark_failing (const unsigned);
 
   void assume_negation (const Clause *);
   bool propagate_conflict ();
@@ -160,8 +160,6 @@ class Drupper {
   bool core_is_unsat () const;
   void dump_core () const;
   vector<int> extract_core_literals () const;
-
-  friend class DrupperClause;
 
   struct {
 

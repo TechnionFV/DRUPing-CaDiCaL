@@ -15,18 +15,18 @@ void Internal::drup () {
 
 /*------------------------------------------------------------------------*/
 
-DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
+DrupperClause::DrupperClause (vector<int> c, bool deletion)
 :
-  revive_at (0), deleted (deletion)
+  deleted (deletion), revive_at (0)
 {
   assert (c.size ());
   variant = LITERALS;
   literals = new std::vector<int>(c);
 };
 
-DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
+DrupperClause::DrupperClause (Clause * c, bool deletion)
 :
-  revive_at (0), deleted (deletion)
+  deleted (deletion), revive_at (0)
 {
   assert (c && c->size);
   variant = CLAUSE;
@@ -87,16 +87,16 @@ const vector<int> & DrupperClause::lits () const {
 
 /*------------------------------------------------------------------------*/
 
-Color::Color () : m_min (UNDEF), m_max (UNDEF) {}
+Color::Color () : m_min (COLOR_UNDEF), m_max (COLOR_UNDEF) {}
 
 Color::Color (unsigned c) : m_min (c), m_max (c) {}
 
 bool Color::undef () const {
-  return m_min == UNDEF;
+  return m_min == COLOR_UNDEF;
 }
 
 void Color::reset () {
-  m_min = UNDEF; m_max = UNDEF;
+  m_min = COLOR_UNDEF; m_max = COLOR_UNDEF;
 }
 
 bool Color::singleton () const {
@@ -290,9 +290,9 @@ void Drupper::append_failed (const vector<int> & c) {
   proof[i]->revive_at = i;
 }
 
-void Drupper::revive_clause (int i) {
+void Drupper::revive_clause (const unsigned i) {
   START (drup_revive);
-  assert (i >= 0 && i < proof.size ());
+  assert (i < proof.size ());
   DrupperClause * dc = proof[i];
   assert (dc->deleted);
   Clause * c = nullptr;
@@ -314,9 +314,9 @@ void Drupper::revive_clause (int i) {
     if (internal->flags (lit).eliminated ())
       internal->reactivate (lit);
   if (dc->revive_at) {
-    int j = dc->revive_at - 1;
+    unsigned j = dc->revive_at - 1;
 #ifndef NDEBUG
-    assert (j < i && j >= 0);
+    assert (j < i);
     assert (!proof[j]->revive_at);  // Are chains even possible?
     assert (!proof[j]->deleted);
 #endif
@@ -326,7 +326,7 @@ void Drupper::revive_clause (int i) {
   STOP (drup_revive);
 }
 
-void Drupper::stagnate_clause (const int i) {
+void Drupper::stagnate_clause (const unsigned i) {
   Clause * c = proof[i]->clause ();
   {
     // See the discussion in 'propagate' on avoiding to eagerly trace binary
@@ -485,9 +485,9 @@ void Drupper::mark_conflict (bool overconstrained) {
   }
 }
 
-void Drupper::mark_failing (const int proof_sz) {
+void Drupper::mark_failing (const unsigned proof_sz) {
   assert (proof_sz < proof.size () && !((proof.size () - proof_sz) % 2));
-  for (int i = proof_sz; i < proof.size(); i++)
+  for (unsigned i = proof_sz; i < proof.size(); i++)
     if ((i - proof_sz) % 2)
       mark_core (proof[i]->clause ());
 }
@@ -741,7 +741,7 @@ void Drupper::dump_clauses (bool active) const {
     if (active && c->garbage && c->size != 2)
       continue;
     printf ("(%d) %s: ", i + j + 1, c->garbage ? "garbage" : "       ");
-    printf ("(%lu): ", c);
+    printf ("(%lu): ", (long unsigned int)c);
     for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
     printf ("\n");
   }
@@ -795,7 +795,7 @@ void Drupper::dump_proof () const {
       if (!c) printf ("0 ");
       else {
         for (int lit : *c) printf ("%d ", lit);
-        printf ("(%lu) %s %s", c, c->garbage ? "(garbage)" : "", is_on_trail (c) ? "(reason)" : "");
+        printf ("(%lu) %s %s", (long unsigned int) c, c->garbage ? "(garbage)" : "", is_on_trail (c) ? "(reason)" : "");
       }
     }
     printf ("\n");
