@@ -87,23 +87,23 @@ const vector<int> & DrupperClause::lits () const {
 
 /*------------------------------------------------------------------------*/
 
-Color::Color () : m_min (COLOR_UNDEF), m_max (COLOR_UNDEF) {}
+ColorRange::ColorRange () : m_min (COLOR_UNDEF), m_max (COLOR_UNDEF) {}
 
-Color::Color (unsigned c) : m_min (c), m_max (c) {}
+ColorRange::ColorRange (const unsigned c) : m_min (c), m_max (c) {}
 
-bool Color::undef () const {
+bool ColorRange::undef () const {
   return m_min == COLOR_UNDEF;
 }
 
-void Color::reset () {
+void ColorRange::reset () {
   m_min = COLOR_UNDEF; m_max = COLOR_UNDEF;
 }
 
-bool Color::singleton () const {
+bool ColorRange::singleton () const {
   return m_min == m_max;
 }
 
-void Color::join (unsigned np) {
+void ColorRange::join (const unsigned np) {
   if (np == 0)
     return;
   if (undef ()) { m_min = np; m_max = np; }
@@ -113,26 +113,26 @@ void Color::join (unsigned np) {
     m_min = np;
 }
 
-void Color::join(const Color& o) {
+void ColorRange::join(const ColorRange& o) {
   if (o.undef ())
     return;
   join (o.min ());
   join (o.max ());
 }
 
-unsigned Color::min () const {
+unsigned ColorRange::min () const {
   return m_min;
 }
 
-unsigned Color::max () const {
+unsigned ColorRange::max () const {
   return m_max;
 }
 
-bool Color::operator==(const Color& r) {
+bool ColorRange::operator==(const ColorRange& r) {
   return m_min == r.min () && m_max == r.max ();
 }
 
-bool Color::operator!=(const Color& r) {
+bool ColorRange::operator!=(const ColorRange& r) {
   return !(*this == r);
 }
 
@@ -141,7 +141,8 @@ bool Color::operator!=(const Color& r) {
 Drupper::Drupper (Internal * i, File * f)
 :
   internal (i), failed_constraint (0),
-  isolated (0), validating (0), file (f)
+  isolated (0), validating (0),
+  file (f), current_color (COLOR_UNDEF)
 {
   LOG ("DRUPPER new");
 
@@ -704,6 +705,32 @@ void Drupper::reconstruct (const unsigned proof_sz) {
 
 /*------------------------------------------------------------------------*/
 
+vector<int> Drupper::extract_core_literals () const {
+  vector<int> core_lits;
+  for (Clause * c : internal->clauses)
+    if (c->core)
+      for (int l : *c)
+        if (!internal->flags (l).mark_core (true))
+          core_lits.push_back (l);
+  for (Clause * c : unit_clauses)
+    if (c->core)
+      for (int l : *c)
+        if (!internal->flags (l).mark_core (true))
+          core_lits.push_back (l);
+  for (int l : internal->assumptions)
+    if (!internal->flags (l).mark_core (true))
+      core_lits.push_back (l);
+  if (internal->unsat_constraint && internal->constraint.size () == 1) {
+    int l = internal->constraint[0];
+    if (!internal->flags (l).mark_core (true))
+      core_lits.push_back (l);
+  }
+  // Otherwise should be part if internal->clauses
+  return core_lits;
+}
+
+/*------------------------------------------------------------------------*/
+
 void Drupper::check_environment () const {
 #ifndef NDEBUG
   assert (proof.size() == unsigned(stats.derived + stats.deleted));
@@ -864,30 +891,6 @@ void Drupper::dump_core () const {
     file->put ("0\n");
   } // Otherwise should be part if internal->clauses
   file->put ("DUMP CORE START\n");
-}
-
-vector<int> Drupper::extract_core_literals () const {
-  vector<int> core_lits;
-  for (Clause * c : internal->clauses)
-    if (c->core)
-      for (int l : *c)
-        if (!internal->flags (l).mark_core (true))
-          core_lits.push_back (l);
-  for (Clause * c : unit_clauses)
-    if (c->core)
-      for (int l : *c)
-        if (!internal->flags (l).mark_core (true))
-          core_lits.push_back (l);
-  for (int l : internal->assumptions)
-    if (!internal->flags (l).mark_core (true))
-      core_lits.push_back (l);
-  if (internal->unsat_constraint && internal->constraint.size () == 1) {
-    int l = internal->constraint[0];
-    if (!internal->flags (l).mark_core (true))
-      core_lits.push_back (l);
-  }
-  // Otherwise should be part if internal->clauses
-  return core_lits;
 }
 
 /*------------------------------------------------------------------------*/

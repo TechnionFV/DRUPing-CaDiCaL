@@ -69,21 +69,21 @@ public:
 
 const unsigned COLOR_UNDEF = 0;
 
-class Color
+class ColorRange
 {
   unsigned m_min:16, m_max:16;
 public:
-  Color ();
-  Color (unsigned);
+  ColorRange ();
+  ColorRange (const unsigned);
   bool undef () const;
   void reset ();
   bool singleton () const;
-  void join (unsigned np);
-  void join(const Color& o);
+  void join (const unsigned np);
+  void join(const ColorRange& o);
   unsigned min () const;
   unsigned max () const;
-  bool operator==(const Color& r);
-  bool operator!=(const Color& r);
+  bool operator==(const ColorRange& r);
+  bool operator!=(const ColorRange& r);
 };
 
 struct lock_scope {
@@ -127,6 +127,9 @@ class Drupper {
   void stagnate_clause (const unsigned);
   void reactivate_fixed (int);
 
+  // Trimming
+  //
+
   void shrink_internal_trail (const unsigned);
   void clean_conflict ();
 
@@ -149,6 +152,10 @@ class Drupper {
   void reallocate (const unsigned);
   void reconstruct (unsigned);
 
+  vector<int> extract_core_literals () const;
+
+  // Debug
+  //
   void check_environment () const;
   void dump_clauses (bool active = false) const;
   void dump_clause (const Clause *) const;
@@ -159,7 +166,11 @@ class Drupper {
 
   bool core_is_unsat () const;
   void dump_core () const;
-  vector<int> extract_core_literals () const;
+
+  // Interpolation
+  //
+  unsigned current_color:16;
+  ColorRange global_range;
 
   struct {
 
