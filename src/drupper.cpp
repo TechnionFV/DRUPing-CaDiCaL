@@ -87,6 +87,57 @@ const vector<int> & DrupperClause::lits () const {
 
 /*------------------------------------------------------------------------*/
 
+Color::Color () : m_min (UNDEF), m_max (UNDEF) {}
+
+Color::Color (unsigned c) : m_min (c), m_max (c) {}
+
+bool Color::undef () const {
+  return m_min == UNDEF;
+}
+
+void Color::reset () {
+  m_min = UNDEF; m_max = UNDEF;
+}
+
+bool Color::singleton () const {
+  return m_min == m_max;
+}
+
+void Color::join (unsigned np) {
+  if (np == 0)
+    return;
+  if (undef ()) { m_min = np; m_max = np; }
+  else if (np > m_max)
+    m_max = np;
+  else if (np < m_min)
+    m_min = np;
+}
+
+void Color::join(const Color& o) {
+  if (o.undef ())
+    return;
+  join (o.min ());
+  join (o.max ());
+}
+
+unsigned Color::min () const {
+  return m_min;
+}
+
+unsigned Color::max () const {
+  return m_max;
+}
+
+bool Color::operator==(const Color& r) {
+  return m_min == r.min () && m_max == r.max ();
+}
+
+bool Color::operator!=(const Color& r) {
+  return !(*this == r);
+}
+
+/*------------------------------------------------------------------------*/
+
 Drupper::Drupper (Internal * i, File * f)
 :
   internal (i), failed_constraint (0),
@@ -543,15 +594,6 @@ void Drupper::conflict_analysis_core () {
 
   assert (seen.empty ());
   STOP (drup_analyze);
-}
-
-/*------------------------------------------------------------------------*/
-
-static void collect (Internal * internal) {
-  if (!internal->protected_reasons)
-    internal->protect_reasons ();
-  internal->delete_garbage_clauses ();
-  internal->unprotect_reasons ();
 }
 
 /*------------------------------------------------------------------------*/

@@ -67,6 +67,25 @@ public:
   const vector<int> & lits () const;
 };
 
+
+class Color
+{
+  unsigned m_min:15, m_max:16;
+public:
+  const unsigned UNDEF:1 = 0;
+  Color ();
+  Color (unsigned);
+  bool undef () const;
+  void reset ();
+  bool singleton () const;
+  void join (unsigned np);
+  void join(const Color& o);
+  unsigned min () const;
+  unsigned max () const;
+  bool operator==(const Color& r);
+  bool operator!=(const Color& r);
+};
+
 struct lock_scope {
   bool & key;
   lock_scope (bool & key_) : key (key_) { assert (!key_); key = true; };
