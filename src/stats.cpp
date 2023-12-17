@@ -309,7 +309,7 @@ void Checker::print_stats () {
 void Drupper::print_stats () {
   SECTION ("drupper statistics");
 
-  auto all = internal->stats.current.total;
+  auto all = internal->stats.current.total + stats.units;
   auto drup = stats.deleted + stats.derived;
 
   MSG ("proof:           %15" PRId64 "", drup);
