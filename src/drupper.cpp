@@ -547,15 +547,6 @@ void Drupper::conflict_analysis_core () {
 
 /*------------------------------------------------------------------------*/
 
-static void collect (Internal * internal) {
-  if (!internal->protected_reasons)
-    internal->protect_reasons ();
-  internal->delete_garbage_clauses ();
-  internal->unprotect_reasons ();
-}
-
-/*------------------------------------------------------------------------*/
-
 void Drupper::mark_core_trail_antecedents () {
   START (drup_mark_antecedents);
   for (int i = internal->trail.size() - 1; i >= 0; i--) {
