@@ -125,7 +125,7 @@ class Drupper {
   void conflict_analysis_core ();
 
   void mark_core_trail_antecedents ();
-  void unmark_core_clauses ();
+  void unmark_core ();
   void restore_trail ();
   void reallocate (const unsigned);
   void reconstruct (unsigned);
@@ -140,7 +140,7 @@ class Drupper {
 
   bool core_is_unsat () const;
   void dump_core () const;
-  vector<int> extract_core_literals () const;
+  vector<int> extract_core_literals ();
 
   friend class DrupperClause;
 
@@ -151,8 +151,10 @@ class Drupper {
     int64_t deleted;            // number of deleted clauses
     int64_t revived;            // number of revived clauses
     int64_t units;              // number of unit clauses allcoated
-    int64_t core;               // number of core clauses in current trim
-    vector<int64_t> cores;      // number of core clauses per trim
+    int64_t core_clauses;       // number of core clauses in current trim
+    int64_t core_variables;     // number of core variables in current trim
+    vector<pair<int64_t,int64_t>>
+            core_phase;         // core stats per trim phase
 
   } stats;
 
@@ -177,7 +179,7 @@ class Drupper {
   } settings;
 
   void save_core_phase_stats () {
-    stats.cores.push_back (stats.core);
+    stats.core_phase.push_back ({stats.core_clauses, stats.core_variables});
   }
 
 public:

@@ -309,16 +309,20 @@ void Checker::print_stats () {
 void Drupper::print_stats () {
   SECTION ("drupper statistics");
 
-  auto all = internal->stats.current.total + stats.units;
+  auto all = internal->stats.current.total + stats.units + stats.revived;
   auto drup = stats.deleted + stats.derived;
+  auto vars = internal->stats.vars;
 
-  MSG ("proof:           %15" PRId64 "", drup);
-  MSG ("derived:         %15" PRId64 "   %10.2f %%  of proof size", stats.derived, percent (stats.derived, drup));
-  MSG ("deleted:         %15" PRId64 "   %10.2f %%  of proof size", stats.deleted, percent (stats.deleted, drup));
-  MSG ("revived:         %15" PRId64 "   %10.2f %%  of proof size", stats.revived, percent (stats.revived, drup));
+  MSG ("DRUP proof:      %15" PRId64 "", drup);
+  MSG ("DRUP derived:    %15" PRId64 "   %10.2f %%  of DRUP proof size", stats.derived, percent (stats.derived, drup));
+  MSG ("DRUP deleted:    %15" PRId64 "   %10.2f %%  of DRUP proof size", stats.deleted, percent (stats.deleted, drup));
+  MSG ("revived:         %15" PRId64 "   %10.2f %%  of all clauses", stats.revived, percent (stats.revived, all));
   MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.units, percent (stats.units, all));
-  for (unsigned i = 1; i <= stats.cores.size (); i++)
-    MSG ("phase %d core:        %11" PRId64 "   %10.2f %%  of all clauses", i, stats.cores[i-1], percent (stats.cores[i-1], all));
+  for (unsigned i = 1; i <= stats.core_phase.size (); i++) {
+    MSG ("core phase %d:", i);
+    MSG ("  clauses            %11" PRId64 "   %10.2f %%  of all clauses", stats.core_phase[i-1].first, percent (stats.core_phase[i-1].first, all));
+    MSG ("  variables          %11" PRId64 "   %10.2f %%  of all clauses", stats.core_phase[i-1].second, percent (stats.core_phase[i-1].second, vars));
+  }
 }
 
 }

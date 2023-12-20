@@ -388,7 +388,7 @@ bool Drupper::is_on_trail (Clause * c) const {
 
 void Drupper::mark_core (Clause * c) {
   assert (c);
-  if (!c->core) stats.core++;
+  if (!c->core) stats.core_clauses++;
   c->core = true;
 }
 
@@ -564,14 +564,15 @@ void Drupper::mark_core_trail_antecedents () {
   STOP (drup_mark_antecedents);
 }
 
-void Drupper::unmark_core_clauses () {
+void Drupper::unmark_core () {
   for (Clause * c : internal->clauses)
     if (c->core)
-      c->core = false, stats.core--;
+      c->core = false, stats.core_clauses--;
   for (Clause * c : unit_clauses)
     if (c->core)
-      c->core = false, stats.core--;
-  assert (stats.core == 0);
+      c->core = false, stats.core_clauses--;
+  stats.core_variables = 0;
+  assert (stats.core_clauses == 0);
 }
 
 void Drupper::restore_trail () {
@@ -646,7 +647,7 @@ void Drupper::reallocate (const unsigned proof_sz) {
 void Drupper::reconstruct (const unsigned proof_sz) {
   lock_scope isolate (isolated);
   START (drup_reconstruct);
-  unmark_core_clauses ();
+  unmark_core ();
   reallocate (proof_sz);
   STOP (drup_reconstruct);
 }
@@ -815,25 +816,25 @@ void Drupper::dump_core () const {
   file->put ("DUMP CORE START\n");
 }
 
-vector<int> Drupper::extract_core_literals () const {
+vector<int> Drupper::extract_core_literals () {
   vector<int> core_lits;
   for (Clause * c : internal->clauses)
     if (c->core)
       for (int l : *c)
         if (!internal->flags (l).mark_core (true))
-          core_lits.push_back (l);
+          core_lits.push_back (l), stats.core_variables++;
   for (Clause * c : unit_clauses)
     if (c->core)
       for (int l : *c)
         if (!internal->flags (l).mark_core (true))
-          core_lits.push_back (l);
+          core_lits.push_back (l), stats.core_variables++;
   for (int l : internal->assumptions)
     if (!internal->flags (l).mark_core (true))
-      core_lits.push_back (l);
+      core_lits.push_back (l), stats.core_variables++;
   if (internal->unsat_constraint && internal->constraint.size () == 1) {
     int l = internal->constraint[0];
     if (!internal->flags (l).mark_core (true))
-      core_lits.push_back (l);
+      core_lits.push_back (l), stats.core_variables++;
   }
   // Otherwise should be part if internal->clauses
   return core_lits;
@@ -1088,6 +1089,8 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
 
   ///NOTE: This is a good point to handle core clauses as some might be collected later.
   {
+    if (settings.extract_core_literals)
+      opt_core_lits = extract_core_literals ();
     save_core_phase_stats ();
     dump_core ();
 #ifndef NDEBUG
@@ -1095,8 +1098,6 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
     if (settings.check_core)
       assert (core_is_unsat ());
 #endif
-    if (settings.extract_core_literals)
-      opt_core_lits = extract_core_literals ();
   }
 
   ///NOTE: In typical scenarios, once the formula undergoes trimming in primary applications, the
