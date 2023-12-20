@@ -17,7 +17,7 @@ void Internal::drup () {
 
 DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 :
-  revive_at (0), deleted (deletion)
+  deleted (deletion), revive_at (0)
 {
   assert (c.size ());
   variant = LITERALS;
@@ -26,7 +26,7 @@ DrupperClause::DrupperClause (vector<int> c, bool deletion, bool failing)
 
 DrupperClause::DrupperClause (Clause * c, bool deletion, bool failing)
 :
-  revive_at (0), deleted (deletion)
+  deleted (deletion), revive_at (0)
 {
   assert (c && c->size);
   variant = CLAUSE;
