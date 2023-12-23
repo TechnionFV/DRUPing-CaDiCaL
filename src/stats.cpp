@@ -320,8 +320,8 @@ void Drupper::print_stats () {
   MSG ("units:           %15" PRId64 "   %10.2f %%  of all clauses", stats.units, percent (stats.units, all));
   for (unsigned i = 1; i <= stats.core_phase.size (); i++) {
     MSG ("core phase %d:", i);
-    MSG ("  clauses            %11" PRId64 "   %10.2f %%  of all clauses", stats.core_phase[i-1].first, percent (stats.core_phase[i-1].first, all));
-    MSG ("  variables          %11" PRId64 "   %10.2f %%  of all clauses", stats.core_phase[i-1].second, percent (stats.core_phase[i-1].second, vars));
+    MSG ("#clauses             %11" PRId64 "   %10.2f %%  of all clauses", stats.core_phase[i-1].clauses, percent (stats.core_phase[i-1].clauses, all));
+    MSG ("#variables           %11" PRId64 "   %10.2f %%  of all variables", stats.core_phase[i-1].variables, percent (stats.core_phase[i-1].variables, vars));
   }
 }
 

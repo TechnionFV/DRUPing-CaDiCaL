@@ -63,8 +63,6 @@ struct Flags {        // Variable flags.
   bool substituted () const { return status == SUBSTITUTED; }
   bool pure () const { return status == PURE; }
 
-  bool mark_core (bool val) { bool core_ = core; core = val; return core_; }
-
   // The flags marked with '(*)' are copied during 'External::copy_flags',
   // which in essence means they are reset in the copy if they were clear.
   // This avoids the effort of fruitless preprocessing the copy.

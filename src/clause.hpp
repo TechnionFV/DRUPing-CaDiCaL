@@ -116,7 +116,8 @@ struct Clause {
     // all the time (even if allocated outside of the arena).
     //
     assert (size > 0);
-    return align ((size - 1) * sizeof (int) + sizeof (Clause), 8);
+    int surpluss = size == 1 ? 0 : size - 2;
+    return align (surpluss * sizeof (int) + sizeof (Clause), 8);
   }
 
   size_t bytes () const { return bytes (size); }

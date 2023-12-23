@@ -54,8 +54,8 @@ private:
     vector<int> * literals;
   };
 public:
-  DrupperClause (vector<int> c, bool deletion = false, bool failing = false);
-  DrupperClause (Clause * c, bool deletion = false, bool failing = false);
+  DrupperClause (vector<int> c, bool deletion = false);
+  DrupperClause (Clause * c, bool deletion = false);
   ~DrupperClause ();
   DCVariant variant_type () const;
   void destroy_variant ();
@@ -92,9 +92,9 @@ class Drupper {
   //
   vector<DrupperClause *> proof;
 
-  Clause * new_clause (const vector<int> &);
-  vector<Clause *> unit_clauses;
+  Clause * new_garbage_redundant_clause (const vector<int> &);
   Clause * new_unit_clause (const int lit, bool original);
+  vector<Clause *> unit_clauses;
 
   Clause * failed_constraint;
   bool isolated;
@@ -102,9 +102,9 @@ class Drupper {
   File * file;
 
   bool trivially_satisfied (const vector <int> &);
-  void append_lemma (DrupperClause * dc);
+  void append_lemma (DrupperClause *);
   void append_failed (const vector<int>  &);
-  void revive_clause (int);
+  void revive_clause (const int);
   void stagnate_clause (const int);
   void reactivate_fixed (int);
 
@@ -115,6 +115,7 @@ class Drupper {
   void undo_trail_core (Clause * c, unsigned & trail_sz);
   bool is_on_trail (Clause *) const;
 
+  void mark_core (int);
   void mark_core (Clause *);
   void mark_conflict_lit (const int);
   void mark_conflict (bool);
@@ -151,10 +152,11 @@ class Drupper {
     int64_t deleted;            // number of deleted clauses
     int64_t revived;            // number of revived clauses
     int64_t units;              // number of unit clauses allcoated
-    int64_t core_clauses;       // number of core clauses in current trim
-    int64_t core_variables;     // number of core variables in current trim
-    vector<pair<int64_t,int64_t>>
-            core_phase;         // core stats per trim phase
+
+    typedef struct { int64_t clauses, variables; } core_stats;
+    core_stats core;            // core statistics in current trim
+    vector<core_stats>
+            core_phase;         // core statistics per trim phase
 
   } stats;
 
@@ -179,7 +181,7 @@ class Drupper {
   } settings;
 
   void save_core_phase_stats () {
-    stats.core_phase.push_back ({stats.core_clauses, stats.core_variables});
+    stats.core_phase.push_back ({stats.core.clauses, stats.core.variables});
   }
 
 public:

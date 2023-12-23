@@ -217,7 +217,6 @@ int Internal::cdcl_loop_with_inprocessing () {
     else res = decide ();                    // next decision
   }
 
-
   if (stable) { STOP (stable);   report (']'); }
   else        { STOP (unstable); report ('}'); }
 
