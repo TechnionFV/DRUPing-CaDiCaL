@@ -15,13 +15,14 @@ void Internal::drup () {
 
 /*------------------------------------------------------------------------*/
 
-DrupperClause::DrupperClause (vector<int> c, bool deletion)
+DrupperClause::DrupperClause (vector<int> c, const int code, bool deletion)
 :
   deleted (deletion), revive_at (0)
 {
   assert (c.size ());
   variant = LITERALS;
   literals = new std::vector<int>(c);
+  literals->push_back (code);
 };
 
 DrupperClause::DrupperClause (Clause * c, bool deletion)
@@ -67,6 +68,7 @@ Clause * DrupperClause::flip_variant () {
   set_variant (vector<int> ());
   for (int lit : *ref)
     literals->push_back (lit);
+  literals->push_back (ref->color_range.code());
   return ref;
 }
 
@@ -75,14 +77,50 @@ Clause * DrupperClause::clause () {
   return counterpart;
 }
 
-vector<int> & DrupperClause::lits () {
+const vector<int> & DrupperClause::lits () const {
   assert (variant_type () == LITERALS && literals);
   return *literals;
 }
 
-const vector<int> & DrupperClause::lits () const {
-  assert (variant_type () == LITERALS && literals);
-  return *literals;
+int DrupperClause::size () const {
+  if (variant_type () == LITERALS) {
+    assert (literals && literals->size () > 1);
+    return literals->size () - 1;
+  } else {
+    assert (counterpart); // what if 0 ?
+    return counterpart->size;
+  }
+}
+
+DrupperClauseIterator DrupperClause::lits_begin () const {
+  assert (variant_type () == LITERALS);
+  assert (literals && literals->size () > 1);
+  return DrupperClauseIterator(*literals, 0);
+}
+
+DrupperClauseIterator DrupperClause::lits_end () const {
+  assert (variant_type () == LITERALS);
+  assert (literals && literals->size () > 1);
+  return DrupperClauseIterator(*literals, literals->size() - 1);
+}
+
+/*------------------------------------------------------------------------*/
+
+DrupperClauseIterator::DrupperClauseIterator(const vector<int>& clause, size_t index)
+: m_clause (clause), m_index (index) {}
+
+int DrupperClauseIterator::operator*() const {
+  assert (m_index < m_clause.size () - 1);
+  return m_clause[m_index];
+}
+
+DrupperClauseIterator& DrupperClauseIterator::operator++() {
+  ++m_index;
+  return *this;
+}
+
+bool DrupperClauseIterator::operator!=(const DrupperClauseIterator& other) const {
+  return m_index != other.m_index;
 }
 
 /*------------------------------------------------------------------------*/
@@ -134,6 +172,10 @@ bool ColorRange::operator==(const ColorRange& r) {
 
 bool ColorRange::operator!=(const ColorRange& r) {
   return !(*this == r);
+}
+
+int ColorRange::code () const {
+  return (m_max << 16) | m_min;
 }
 
 /*------------------------------------------------------------------------*/
@@ -247,6 +289,57 @@ Clause * Drupper::new_garbage_redundant_clause (const vector<int> & clause) {
   return c;
 }
 
+Clause * Drupper::new_garbage_redundant_clause (const DrupperClause* dc) {
+
+  assert (dc && dc->size () <= (size_t) INT_MAX);
+  const int size = (int) dc->size ();
+  assert (size >= 2);
+
+  size_t bytes = Clause::bytes (size);
+  Clause * c = (Clause *) new char[bytes];
+
+  c->conditioned = false;
+  c->covered = false;
+  c->enqueued = false;
+  c->frozen = false;
+  c->garbage = true;
+  c->gate = false;
+  c->hyper = false;
+  c->instantiated = false;
+  c->keep = false;
+  c->moved = false;
+  c->reason = false;
+  c->redundant = true;
+  c->transred = false;
+  c->subsume = false;
+  c->vivified = false;
+  c->vivify = false;
+  c->core = false;
+  c->drup_idx = 0;
+  c->used = 0;
+
+  c->glue = 0;
+  c->size = size;
+  c->pos = 2;
+
+  auto it = dc->lits_begin ();
+  auto end = dc->lits_end ();
+
+  for (int i = 0; i < size; i++, ++it) {
+    assert (it != end);
+    c->literals[i] = *it;
+  }
+
+  assert (c->bytes () == bytes);
+
+  // stats.added.total++;
+  // stats.added.redundant++;
+
+  internal->clauses.push_back (c);
+  internal->stats.garbage += bytes;
+  return c;
+}
+
 Clause * Drupper::new_unit_clause (const int lit, bool original) {
 
   size_t bytes = Clause::bytes (1);
@@ -324,8 +417,9 @@ void Drupper::append_lemma (DrupperClause * dc) {
 }
 
 void Drupper::append_failed (const vector<int> & c) {
-  append_lemma (new DrupperClause (c));
-  append_lemma (new DrupperClause (c, true));
+  colorize (c);
+  append_lemma (new DrupperClause (c, ColorRange (current_color).code ()));
+  append_lemma (new DrupperClause (c, ColorRange (current_color).code (), true));
   int i = proof.size () - 1;
   proof[i]->revive_at = i;
 }
@@ -339,8 +433,7 @@ void Drupper::revive_clause (const int i) {
   if (dc->variant_type () == CLAUSE)
     c = dc->clause ();
   else {
-    const auto & literals = dc->lits ();
-    c = new_garbage_redundant_clause (literals);
+    c = new_garbage_redundant_clause (dc);
     c->drup_idx = i + 1;
     dc ->set_variant (c);
   }
@@ -508,9 +601,8 @@ void Drupper::mark_conflict (bool overconstrained) {
       // Revive it and mark it as the conflict clause.
       assert (proof.size ());
       DrupperClause * dc  = proof.back ();
-      vector<int>& lits = dc->lits ();
-      if (lits.size () == 1)
-        dc->set_variant (new_unit_clause (lits[0], false));
+      if (dc->size () == 1)
+        dc->set_variant (new_unit_clause (*dc->lits_begin (), false));
       else revive_clause (proof.size () - 1);
       conflict = dc->clause ();
     } else {
@@ -764,18 +856,18 @@ void Drupper::check_environment () const {
         assert (c && c->garbage);
       } else {
         assert (dc->variant_type () == LITERALS);
-        assert (dc->variant_type () == LITERALS && dc->lits ().size ());
+        assert (dc->variant_type () == LITERALS && dc->size ());
         if (dc->revive_at) {
           assert (dc->revive_at <= proof.size ());
           assert (dc->revive_at > 0);
           auto & pdc = proof[dc->revive_at-1];
           assert (!pdc->revive_at && !pdc->deleted);
           if (pdc->variant_type () == LITERALS)
-            assert (proof[dc->revive_at-1]->lits ().size ());
+            assert (proof[dc->revive_at-1]->size ());
         }
       }
     } else {
-      assert (dc->variant_type () == CLAUSE || dc->lits ().size ());
+      assert (dc->variant_type () == CLAUSE || dc->size ());
     }
   }
 #endif
@@ -816,9 +908,9 @@ void Drupper::dump_clause (const Clause * c) const {
 
 void Drupper::dump_clause (const DrupperClause * dc) const {
   assert (dc);
-  const auto & lits = dc->lits ();
-  for (int i : lits)
-    printf ("%d ", i);
+  auto end = dc->lits_end ();
+  for (auto it = dc->lits_begin (); it != end; ++it)
+    printf ("%d ", *it);
   printf ("\n");
 }
 
@@ -834,9 +926,9 @@ void Drupper::dump_proof () const {
     auto & dc = proof[i];
     printf ("(%d) (revive_at %d) %s: ", i, dc->revive_at-1, dc->deleted ? "deleted" : "       ");
     if (dc->variant_type () == LITERALS) {
-      auto & lits = dc->lits ();
-      for (int l : lits)
-        printf ("%d ", l);
+      auto end = dc->lits_end ();
+      for (auto it = dc->lits_begin (); it != end; ++it)
+        printf ("%d ", *it);
     } else {
       Clause * c = proof[i]->clause ();
       printf ("c: ");
@@ -979,7 +1071,7 @@ void Drupper::add_updated_clause (Clause * c) {
   vector<int> lits;
   for (int lit : *c)
     lits.push_back (lit);
-  DrupperClause * old = new DrupperClause (lits, true);
+  DrupperClause * old = new DrupperClause (lits, c->color_range.code(), true);
   old->revive_at = revive_at;
   append_lemma (old);
   STOP (drup_inprocess);
@@ -1012,6 +1104,13 @@ static void swap_falsified_literals_right (Internal * internal, vector <int> & c
   }
 }
 
+static ColorRange decode_color_range (const int code) {
+  ColorRange rc;
+  rc.join (code & 0xFFFF);
+  rc.join ((code >> 16) & 0xFFFF);
+  return rc;
+}
+
 /*------------------------------------------------------------------------*/
 
 void Drupper::delete_clause (const vector<int> & c, bool original) {
@@ -1034,9 +1133,9 @@ void Drupper::delete_clause (const vector<int> & c, bool original) {
       // revived.
       swap_falsified_literals_right (internal, modified);
     }
-    append_lemma (new DrupperClause (modified, true));
+    colorize (modified);
+    append_lemma (new DrupperClause (modified, ColorRange (current_color).code (), true));
   }
-  ///TODO: code colors into vector<int>.
   STOP (drup_inprocess);
 }
 
@@ -1202,6 +1301,11 @@ void Drupper::prefer_core_watches (const int lit) {
 
 int Drupper::pick_new_color () {
   return ++current_color;
+}
+
+void Drupper::colorize (const vector<int> &c) const {
+  for (int l : c)
+    internal->flags (l).color_range.join (current_color);
 }
 
 void Drupper::colorize (Clause * c) {

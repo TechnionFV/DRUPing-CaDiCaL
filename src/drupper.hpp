@@ -41,18 +41,32 @@ enum DCVariant {
   LITERALS =  1
 };
 
+// Iterator for literals excluding the last one
+class DrupperClauseIterator {
+private:
+  const vector<int> & m_clause;
+  size_t m_index;
+
+public:
+  explicit DrupperClauseIterator(const vector<int>&, size_t);
+  int operator*() const;
+  DrupperClauseIterator& operator++();
+  bool operator!=(const DrupperClauseIterator& other) const;
+};
+
 class DrupperClause {
   bool variant:1;
 public:
   bool deleted:1;
   unsigned revive_at:30;
-private:
+protected:
   union {
     Clause * counterpart;
     vector<int> * literals;
   };
+  const vector<int> & lits () const;
 public:
-  DrupperClause (vector<int> c, bool deletion = false);
+  DrupperClause (vector<int> c, const int code, bool deletion = false);
   DrupperClause (Clause * c, bool deletion = false);
   ~DrupperClause ();
   DCVariant variant_type () const;
@@ -61,8 +75,9 @@ public:
   void set_variant (const vector<int> &);
   Clause * flip_variant ();
   Clause * clause ();
-  vector<int> & lits ();
-  const vector<int> & lits () const;
+  int size () const;
+  DrupperClauseIterator lits_begin () const;
+  DrupperClauseIterator lits_end () const;
 };
 
 const unsigned COLOR_UNDEF = 0;
@@ -82,6 +97,7 @@ public:
   unsigned max () const;
   bool operator==(const ColorRange& r);
   bool operator!=(const ColorRange& r);
+  int code () const;
 };
 
 struct lock_scope {
@@ -110,6 +126,7 @@ class Drupper {
   vector<DrupperClause *> proof;
 
   Clause * new_garbage_redundant_clause (const vector<int> &);
+  Clause * new_garbage_redundant_clause (const DrupperClause *);
   Clause * new_unit_clause (const int lit, bool original);
   vector<Clause *> unit_clauses;
 
@@ -167,6 +184,7 @@ class Drupper {
   //
   unsigned current_color:16;
   ColorRange global_color_ranage;
+  void colorize (const vector<int> &) const;
 
   struct {
 
@@ -226,7 +244,6 @@ public:
   void update_moved_counterparts ();
 
   void trim (bool overconstrained = false);
-
   void prefer_core_watches (const int);
 
   int pick_new_color();
