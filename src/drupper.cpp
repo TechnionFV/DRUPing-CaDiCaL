@@ -142,7 +142,7 @@ Drupper::Drupper (Internal * i, File * f)
 :
   internal (i), failed_constraint (0),
   isolated (0), validating (0),
-  file (f), current_color (COLOR_UNDEF)
+  file (f), current_color (1)
 {
   LOG ("DRUPPER new");
 
@@ -906,10 +906,9 @@ void Drupper::add_derived_clause (Clause * c) {
 
 void Drupper::add_derived_unit_clause (const int lit, bool original) {
   if (isolated) return;
-  assert (!validating);
+  assert (!validating && lit);
   START (drup_inprocess);
   LOG ({lit}, "DRUPPER derived clause notification");
-  assert (lit);
   assert (!original || !internal->var(lit).reason);
   Clause * c = 0;
   if (!internal->var(lit).reason)
@@ -1016,6 +1015,8 @@ void Drupper::delete_clause (const vector<int> & c, bool original) {
     }
     append_lemma (new DrupperClause (modified, true));
   }
+  ///TODO:: Colorize all clause.. but, if ew deallocate references, are we loosing partitions!?
+  // Consider saving color/range of a clause
   STOP (drup_inprocess);
 }
 
@@ -1180,6 +1181,20 @@ void Drupper::prefer_core_watches (const int lit) {
     auto tw = ws[l];
     ws[l++] = ws[h];
     ws[h] = tw;
+  }
+}
+
+int Drupper::pick_new_color () {
+  return ++current_color;
+}
+
+void Drupper::colorize (Clause * c) {
+  assert (c);
+  c->color_range.join (current_color);
+  global_color_range.join (current_color);
+  for (int l : *c) {
+    auto& flags = internal->flags (l);
+    flags.color_range.join (current_color);
   }
 }
 

@@ -34,6 +34,7 @@ struct Flags {        // Variable flags.
   // Related to Drupper
   //
   bool core : 1;
+  ColorRange color_range;
 
   enum {
     UNUSED      = 0,

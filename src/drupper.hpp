@@ -170,7 +170,7 @@ class Drupper {
   // Interpolation
   //
   unsigned current_color:16;
-  ColorRange global_range;
+  ColorRange global_color_range;
 
   struct {
 
@@ -229,8 +229,10 @@ public:
   void update_moved_counterparts ();
 
   optional<vector<int>> trim (bool overconstrained = false);
-
   void prefer_core_watches (const int);
+
+  int pick_new_color ();
+  void colorize (Clause *);
 
   void print_stats ();
 };
