@@ -126,8 +126,6 @@ void Drupper::set (const char * setting, bool val) {
     settings.prefer_core = val;
   else if (!strcmp (setting, "check_core"))
     settings.check_core = val;
-  else if (!strcmp (setting, "extract_core_literals"))
-    settings.extract_core_literals = val;
   else assert (0 && "unknown drupper seting");
 }
 
@@ -864,14 +862,6 @@ void Drupper::dump_core () const {
   file->put ("DUMP CORE START\n");
 }
 
-vector<int> Drupper::extract_core_literals () {
-  vector<int> core_lits;
-  for (int l = 1; l <= internal->stats.vars; l++)
-    if (internal->flags (l).core)
-      core_lits.push_back (l);
-  return core_lits;
-}
-
 /*------------------------------------------------------------------------*/
 
 void Drupper::add_derived_clause (Clause * c) {
@@ -1056,7 +1046,7 @@ void Drupper::update_moved_counterparts () {
 
 /*------------------------------------------------------------------------*/
 
-optional<vector<int>> Drupper::trim (bool overconstrained) {
+void Drupper::trim (bool overconstrained) {
 
   START (drup_trim);
   LOG ("DRUPPER trim");
@@ -1117,8 +1107,6 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
 
   internal->report ('M');
 
-  optional<vector<int>> opt_core_lits;
-
   {
     // This is a good point to handle core clauses as some might be collected later.
     save_core_phase_stats ();
@@ -1128,8 +1116,6 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
     if (settings.check_core)
       assert (core_is_unsat ());
 #endif
-    if (settings.extract_core_literals)
-      opt_core_lits = extract_core_literals ();
   }
 
   ///NOTE: In typical scenarios, once the formula undergoes trimming in primary applications, the
@@ -1144,7 +1130,6 @@ optional<vector<int>> Drupper::trim (bool overconstrained) {
   restore_trail ();
 
   STOP (drup_trim);
-  return opt_core_lits;
 }
 
 ///FIXME: experimental trivial implementation... Needs refactoring.

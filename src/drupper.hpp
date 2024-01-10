@@ -2,8 +2,6 @@
 #define _drupper_hpp_INCLUDED
 
 #include <unordered_map>
-#include <optional>
-using std::optional;
 
 namespace CaDiCaL {
 
@@ -141,7 +139,6 @@ class Drupper {
 
   bool core_is_unsat () const;
   void dump_core () const;
-  vector<int> extract_core_literals ();
 
   friend class DrupperClause;
 
@@ -166,14 +163,12 @@ class Drupper {
 
     bool core_units:1;              // mark trail reason units as core
     bool check_core:1;              // assert the set of core literals is unsat (under debug mode only)
-    bool extract_core_literals:1;   // once formula have been trimmed, trim () will return core literals
     bool prefer_core:1;             // sorts watches to propagate core literals first during trim
     bool reconstruct:1;             // reconstruct the solver state after trim
 
     Settings () { // default
       core_units = false;
       check_core = true;
-      extract_core_literals = false;
       prefer_core = false;
       reconstruct = true;
     }
@@ -204,7 +199,7 @@ public:
 
   void update_moved_counterparts ();
 
-  optional<vector<int>> trim (bool overconstrained = false);
+  void trim (bool overconstrained = false);
 
   void prefer_core_watches (const int);
 
