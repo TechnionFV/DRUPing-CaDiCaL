@@ -65,6 +65,25 @@ public:
   const vector<int> & lits () const;
 };
 
+const unsigned COLOR_UNDEF = 0;
+
+class ColorRange
+{
+  unsigned m_min:16, m_max:16;
+public:
+  ColorRange ();
+  ColorRange (const unsigned);
+  bool undef () const;
+  void reset ();
+  bool singleton () const;
+  void join (const unsigned np);
+  void join(const ColorRange& o);
+  unsigned min () const;
+  unsigned max () const;
+  bool operator==(const ColorRange& r);
+  bool operator!=(const ColorRange& r);
+};
+
 struct lock_scope {
   bool & key;
   lock_scope (bool & key_) : key (key_) { assert (!key_); key = true; };
@@ -106,6 +125,8 @@ class Drupper {
   void stagnate_clause (const int);
   void reactivate_fixed (int);
 
+  // Trimming
+  //
   void shrink_internal_trail (const unsigned);
   void clean_conflict ();
 
@@ -129,6 +150,8 @@ class Drupper {
   void reallocate (const unsigned);
   void reconstruct (unsigned);
 
+  // Debug
+  //
   void check_environment () const;
   void dump_clauses (bool active = false) const;
   void dump_clause (const Clause *) const;
@@ -140,7 +163,10 @@ class Drupper {
   bool core_is_unsat () const;
   void dump_core () const;
 
-  friend class DrupperClause;
+  // Interpolation
+  //
+  unsigned current_color:16;
+  ColorRange global_color_ranage;
 
   struct {
 
@@ -202,6 +228,9 @@ public:
   void trim (bool overconstrained = false);
 
   void prefer_core_watches (const int);
+
+  int pick_new_color();
+  void colorize(Clause *);
 
   void print_stats ();
 };

@@ -31,9 +31,10 @@ struct Flags {        // Variable flags.
   unsigned char assumed : 2;
   unsigned char failed : 2;
 
-  // Related to Drupper
+  // Drupper related
   //
   bool core : 1;
+  ColorRange color_range;
 
   enum {
     UNUSED      = 0,

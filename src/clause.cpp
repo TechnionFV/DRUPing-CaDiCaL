@@ -139,6 +139,8 @@ Clause * Internal::new_clause (bool red, int glue) {
 
   if (likely_to_be_kept_clause (c)) mark_added (c);
 
+  if (drupper) drupper->colorize (c);
+
   return c;
 }
 

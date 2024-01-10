@@ -87,10 +87,62 @@ const vector<int> & DrupperClause::lits () const {
 
 /*------------------------------------------------------------------------*/
 
+ColorRange::ColorRange () : m_min (COLOR_UNDEF), m_max (COLOR_UNDEF) {}
+
+ColorRange::ColorRange (const unsigned c) : m_min (c), m_max (c) {}
+
+bool ColorRange::undef () const {
+  return m_min == COLOR_UNDEF;
+}
+
+void ColorRange::reset () {
+  m_min = COLOR_UNDEF; m_max = COLOR_UNDEF;
+}
+
+bool ColorRange::singleton () const {
+  return m_min == m_max;
+}
+
+void ColorRange::join (const unsigned np) {
+  if (np == 0)
+    return;
+  if (undef ()) { m_min = np; m_max = np; }
+  else if (np > m_max)
+    m_max = np;
+  else if (np < m_min)
+    m_min = np;
+}
+
+void ColorRange::join(const ColorRange& o) {
+  if (o.undef ())
+    return;
+  join (o.min ());
+  join (o.max ());
+}
+
+unsigned ColorRange::min () const {
+  return m_min;
+}
+
+unsigned ColorRange::max () const {
+  return m_max;
+}
+
+bool ColorRange::operator==(const ColorRange& r) {
+  return m_min == r.min () && m_max == r.max ();
+}
+
+bool ColorRange::operator!=(const ColorRange& r) {
+  return !(*this == r);
+}
+
+/*------------------------------------------------------------------------*/
+
 Drupper::Drupper (Internal * i, File * f)
 :
   internal (i), failed_constraint (0),
-  isolated (0), validating (0), file (f)
+  isolated (0), validating (0),
+  file (f), current_color(1)
 {
   LOG ("DRUPPER new");
 
@@ -866,7 +918,7 @@ void Drupper::dump_core () const {
 
 void Drupper::add_derived_clause (Clause * c) {
   if (isolated) return;
-  assert (!validating);
+  assert (!validating && c);
   START (drup_inprocess);
   LOG (c, "DRUPPER derived clause notification");
   append_lemma (new DrupperClause (c));
@@ -875,10 +927,9 @@ void Drupper::add_derived_clause (Clause * c) {
 
 void Drupper::add_derived_unit_clause (const int lit, bool original) {
   if (isolated) return;
-  assert (!validating);
+  assert (!validating && lit);
   START (drup_inprocess);
   LOG ({lit}, "DRUPPER derived clause notification");
-  assert (lit);
   assert (!original || !internal->var(lit).reason);
   Clause * c = 0;
   if (!internal->var(lit).reason)
@@ -985,6 +1036,7 @@ void Drupper::delete_clause (const vector<int> & c, bool original) {
     }
     append_lemma (new DrupperClause (modified, true));
   }
+  ///TODO: code colors into vector<int>.
   STOP (drup_inprocess);
 }
 
@@ -1145,6 +1197,19 @@ void Drupper::prefer_core_watches (const int lit) {
     auto tw = ws[l];
     ws[l++] = ws[h];
     ws[h] = tw;
+  }
+}
+
+int Drupper::pick_new_color () {
+  return ++current_color;
+}
+
+void Drupper::colorize (Clause * c) {
+  assert (c);
+  c->color_range.join (current_color);
+  for (int l : *c) {
+    auto &flags = internal->flags (l);
+    flags.color_range.join (current_color);
   }
 }
 
