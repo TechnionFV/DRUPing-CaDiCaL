@@ -55,17 +55,19 @@ void DrupperClause::set_variant (Clause * c) {
   counterpart = c;
 }
 
-void DrupperClause::set_variant (const vector<int> & c) {
-  destroy_variant ();
-  variant = LITERALS;
-  literals = new std::vector<int>(c);
-}
+// void DrupperClause::set_variant (const vector<int> & c) {
+//   destroy_variant ();
+//   variant = LITERALS;
+//   literals = new std::vector<int>(c);
+// }
 
 Clause * DrupperClause::flip_variant () {
   assert (variant_type () == CLAUSE);
   Clause * ref = counterpart;
   assert (ref);
-  set_variant (vector<int> ());
+  destroy_variant ();
+  variant = LITERALS;
+  literals = new std::vector<int>();
   for (int lit : *ref)
     literals->push_back (lit);
   literals->push_back (ref->color_range.code());

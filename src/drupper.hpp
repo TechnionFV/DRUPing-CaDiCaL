@@ -72,7 +72,6 @@ public:
   DCVariant variant_type () const;
   void destroy_variant ();
   void set_variant (Clause *);
-  void set_variant (const vector<int> &);
   Clause * flip_variant ();
   Clause * clause ();
   int size () const;
