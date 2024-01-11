@@ -84,6 +84,11 @@ const vector<int> & DrupperClause::lits () const {
   return *literals;
 }
 
+int DrupperClause::color_range_code () const {
+  assert (variant_type () == LITERALS && literals);
+  return (*literals)[literals->size() - 1];
+}
+
 int DrupperClause::size () const {
   if (variant_type () == LITERALS) {
     assert (literals && literals->size () > 1);
@@ -118,6 +123,11 @@ int DrupperClauseIterator::operator*() const {
 
 DrupperClauseIterator& DrupperClauseIterator::operator++() {
   ++m_index;
+  return *this;
+}
+
+DrupperClauseIterator& DrupperClauseIterator::operator+(const int index) {
+  m_index += index;
   return *this;
 }
 
@@ -174,6 +184,11 @@ bool ColorRange::operator==(const ColorRange& r) {
 
 bool ColorRange::operator!=(const ColorRange& r) {
   return !(*this == r);
+}
+
+void ColorRange::operator=(const int code) {
+  m_min = (code & 0xFFFF);
+  m_max = ((code >> 16) & 0xFFFF);
 }
 
 int ColorRange::code () const {
@@ -318,6 +333,7 @@ Clause * Drupper::new_garbage_redundant_clause (const DrupperClause* dc) {
   c->vivify = false;
   c->core = false;
   c->drup_idx = 0;
+  c->color_range = dc->color_range_code ();
   c->used = 0;
 
   c->glue = 0;
@@ -1104,13 +1120,6 @@ static void swap_falsified_literals_right (Internal * internal, vector <int> & c
       c[i] = bl;
     }
   }
-}
-
-static ColorRange decode_color_range (const int code) {
-  ColorRange rc;
-  rc.join (code & 0xFFFF);
-  rc.join ((code >> 16) & 0xFFFF);
-  return rc;
 }
 
 /*------------------------------------------------------------------------*/

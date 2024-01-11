@@ -51,6 +51,7 @@ public:
   explicit DrupperClauseIterator(const vector<int>&, size_t);
   int operator*() const;
   DrupperClauseIterator& operator++();
+  DrupperClauseIterator& operator+(const int);
   bool operator!=(const DrupperClauseIterator& other) const;
 };
 
@@ -74,6 +75,7 @@ public:
   void set_variant (Clause *);
   Clause * flip_variant ();
   Clause * clause ();
+  int color_range_code () const;
   int size () const;
   DrupperClauseIterator lits_begin () const;
   DrupperClauseIterator lits_end () const;
@@ -96,6 +98,7 @@ public:
   unsigned max () const;
   bool operator==(const ColorRange& r);
   bool operator!=(const ColorRange& r);
+  void operator=(const int);
   int code () const;
 };
 
