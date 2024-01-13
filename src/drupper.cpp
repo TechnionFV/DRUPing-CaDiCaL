@@ -102,6 +102,7 @@ Drupper::Drupper (Internal * i, File * f)
 
   if (internal->opts.drupdumpcore && !f)
     file = File::write (internal, stdout, "<stdout>");
+
   if (internal->opts.drupprefercore)
     set ("prefer_core", 1);
 }
@@ -545,30 +546,37 @@ void Drupper::conflict_analysis_core () {
     return internal->var (lit).trail > internal->control.back().trail;
   };
 
-  ///TODO: Use internal->mark|ed () instead.
-  unordered_set<int> seen;
+#ifndef NDEBUG
+  int seen = 0;
+#endif
 
   for (int lit : *conflict)
   {
     Var & v = internal->var(lit);
     assert (v.level > 0 || v.reason);
-    if (got_value_by_propagation (lit))
-      seen.insert (abs(lit));
-    else if (!v.level)
+    if (got_value_by_propagation (lit)) {
+      assert (!internal->flags(lit).seen);
+#ifndef NDEBUG
+      seen++;
+#endif
+      internal->flags(lit).seen = true;
+    } else if (!v.level)
       mark_core (v.reason);
   }
 
   for (int i = internal->trail.size()-1; i > internal->control.back().trail; i--)
   {
     int lit = internal->trail[i];
-    if (!seen.count (abs(lit)))
+    if (!internal->flags(lit).seen)
       continue;
-    seen.erase (abs(lit));
+
+    internal->flags(lit).seen = false;
 
     Clause * c = internal->var(lit).reason;
     mark_core (c);
 
 #ifndef NDEBUG
+    seen--;
     assert (internal->var(c->literals[0]).reason == c);
     assert (internal->val(c->literals[0]) > 0);
     assert (c->literals[0] == lit);
@@ -579,15 +587,21 @@ void Drupper::conflict_analysis_core () {
       int lit = c->literals[j];
       Var & v = internal->var(lit);
       assert(internal->val(lit) < 0);
-      if (got_value_by_propagation (lit))
-        seen.insert (abs(lit));
-      else if (!v.level) {
+      if (got_value_by_propagation (lit)) {
+#ifndef NDEBUG
+      if (!internal->flags(lit).seen) seen++;
+#endif
+        internal->flags(lit).seen = true;
+      } else if (!v.level) {
         mark_core (v.reason);
       }
     }
   }
 
-  assert (seen.empty ());
+#ifndef NDEBUG
+  assert (!seen);
+#endif
+
   STOP (drup_analyze);
 }
 
