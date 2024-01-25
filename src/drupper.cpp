@@ -100,8 +100,8 @@ Drupper::Drupper (Internal * i, File * f)
   //
   memset (&stats, 0, sizeof (stats));
 
-  if (internal->opts.drupdumpcore && !f)
-    file = File::write (internal, stdout, "<stdout>");
+  // if (internal->opts.drupdumpcore && !f)
+  //   file = File::write (internal, stdout, "<stdout>");
 
   if (internal->opts.drupprefercore)
     set ("prefer_core", 1);
@@ -252,6 +252,10 @@ bool Drupper::trivially_satisfied (const vector <int> & c) {
 }
 
 void Drupper::append_lemma (DrupperClause * dc) {
+  if (!proof.size()) {
+    printf ("appending "); dump_clause (dc->clause());
+    dump_clauses ();
+  }
   assert(proof.size () <= (1u << 30) - 1 && "Possible overflow in revive_at/drup_idx members!");
   if (dc->deleted) stats.deleted++;
   else stats.derived++;
@@ -500,6 +504,8 @@ void Drupper::assume_negation (const Clause * lemma) {
     if (!internal->val (lit))
       decisions.push_back (-lit);
 
+  printf ("decisions = "); dump_clause (decisions);
+
   assert (decisions.size());
   internal->search_assume_multiple_decisions (decisions);
   assert (internal->level  == int (decisions.size()));
@@ -508,6 +514,7 @@ void Drupper::assume_negation (const Clause * lemma) {
 bool Drupper::propagate_conflict () {
   START (drup_propagate);
   assert(!internal->conflict);
+
   if (internal->propagate (settings.prefer_core))
   {
     START (drup_repropagate);
@@ -516,7 +523,7 @@ bool Drupper::propagate_conflict () {
       // missing units. re-propagate the entire trail.
       ///TODO: Understand what exactly happens and why is this needed.
       // A good point to start: test/trace/reg0048.trace.
-      assert (stats.solves);
+      assert (stats.solves > 1);
     }
     internal->propagated = 0;
     if (internal->propagate ()) {
@@ -1081,6 +1088,10 @@ void Drupper::trim (bool overconstrained) {
 
   lock_scope trim_scope (validating);
 
+  dump_proof ();
+  dump_trail ();
+  printf("val(5) = %d\n", internal->val(5));
+
   // Main trimming loop
   for (int i = proof.size() - 1 - int (overconstrained); i >= 0; i--) {
     auto & dc = proof[i];
@@ -1107,10 +1118,32 @@ void Drupper::trim (bool overconstrained) {
     stagnate_clause (i);
 
     if (c->core) {
+      printf ("validating (%d) ", i);dump_clause(c);
+      if (!i) {
+        printf ("val(5) = %d\n", internal->val(5));
+        printf ("val(8) = %d\n", internal->val(8));
+        printf ("val(7) = %d\n", internal->val(7));
+        printf ("val(10) = %d\n", internal->val(10));
+        dump_clauses ();
+      }
       shrink_internal_trail (trail_sz);
       assume_negation (c);
+      if (!i) {
+        printf ("Literals to propagate: ");
+        for (int l = internal->propagated; l < internal->trail.size (); l++)
+          printf ("%d ", internal->trail[l]);
+        printf ("\n");
+        printf ("all trail: ");
+        for (int l = 0; l < internal->trail.size (); l++)
+          printf ("%d ", internal->trail[l]);
+        printf ("\n");
+      }
       bool validated = propagate_conflict ();
       assert (validated);
+      if (!i) {
+        printf ("conflict: ");
+        dump_clause(internal->conflict);
+      }
       conflict_analysis_core ();
       clean_conflict ();
     }
