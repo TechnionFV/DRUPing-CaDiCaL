@@ -57,6 +57,8 @@ void Internal::failing () {
       else if (!first_failed || v.level < failed_level) {
         first_failed = lit;
         failed_level = v.level;
+        if (drupper)
+          drupper->init_analyzed_color_range (v.reason);
       }
     }
 
@@ -137,11 +139,17 @@ void Internal::failing () {
       const int lit = analyzed[next++];
       assert (val (lit) > 0);
       Var & v = var (lit);
-      if (!v.level) continue;
+      if (!v.level) {
+        if (drupper)
+          drupper->join_analyzed_color_range (lit);
+        continue;
+      }
 
       if (v.reason) {
         assert (v.level);
         LOG (v.reason, "analyze reason");
+        if (drupper)
+          drupper->join_analyzed_color_range (v.reason);
         for (const auto & other : *v.reason) {
           Flags & f = flags (other);
           if (f.seen) continue;
@@ -195,10 +203,16 @@ void Internal::failing () {
       }
     }
 
+    if (drupper)
+      drupper->add_analyzed_color_range ();
+
     clause.clear ();
   }
 
 DONE:
+
+  if (drupper)
+    drupper->add_analyzed_color_range ();
 
   STOP (analyze);
 }

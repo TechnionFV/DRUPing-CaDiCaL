@@ -81,8 +81,6 @@ public:
   DrupperClauseIterator lits_end () const;
 };
 
-const unsigned COLOR_UNDEF = 0;
-
 class ColorRange
 {
   unsigned m_min:16, m_max:16;
@@ -139,7 +137,7 @@ class Drupper {
 
   bool trivially_satisfied (const vector <int> &);
   void append_lemma (DrupperClause *);
-  void append_failed (const vector<int>  &);
+  void append_failed (const vector<int> &, const ColorRange &);
   void revive_clause (const int);
   void stagnate_clause (const int);
   void reactivate_fixed (int);
@@ -185,7 +183,8 @@ class Drupper {
   // Interpolation
   //
   unsigned current_color:16;
-  ColorRange global_color_ranage;
+  ColorRange analyzed_range;
+
   void colorize (const vector<int> &) const;
 
   struct {
@@ -235,7 +234,7 @@ public:
   void add_derived_clause (Clause *);
   void add_derived_unit_clause (const int, bool original = false);
   void add_derived_empty_clause ();
-  void add_failing_assumption (const vector<int> &);
+  void add_failing_assumption (const vector<int> &, const ColorRange & cr = {});
   void add_updated_clause (Clause *);
 
   void delete_clause (const vector<int> &, bool original = false);
@@ -248,8 +247,13 @@ public:
   void trim (bool overconstrained = false);
   void prefer_core_watches (const int);
 
-  int pick_new_color();
-  void colorize(Clause *);
+  int pick_new_color ();
+  void colorize (Clause *) const;
+  void colorize_unit (const int) const;
+  void init_analyzed_color_range (const Clause * c = 0);
+  void join_analyzed_color_range (const int);
+  void join_analyzed_color_range (const Clause *);
+  void add_analyzed_color_range (Clause * c = 0);
 
   void print_stats ();
 };

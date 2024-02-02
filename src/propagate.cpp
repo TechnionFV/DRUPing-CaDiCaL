@@ -97,6 +97,8 @@ void Internal::search_assign (int lit, Clause * reason) {
       __builtin_prefetch (&w, 0, 1);
     }
   }
+
+  if (drupper && !lit_level) drupper->colorize_unit (lit);
 }
 
 /*------------------------------------------------------------------------*/

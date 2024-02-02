@@ -230,7 +230,11 @@ Internal::analyze_literal (int lit, int & open) {
   Flags & f = flags (lit);
   if (f.seen) return;
   Var & v = var (lit);
-  if (!v.level) return;
+  if (!v.level) {
+    if (drupper)
+      drupper->join_analyzed_color_range (lit);
+    return;
+  }
   assert (val (lit) < 0);
   assert (v.level <= level);
   if (v.level < level) clause.push_back (lit);
@@ -701,6 +705,9 @@ void Internal::analyze () {
   int open = 0;                 // Seen but not processed on this level.
   int uip = 0;                  // The first UIP literal.
 
+  if (drupper)
+    drupper->init_analyzed_color_range (conflict);
+
   for (;;) {
     analyze_reason (uip, reason, open);
     uip = 0;
@@ -761,6 +768,9 @@ void Internal::analyze () {
   int jump;
   Clause * driving_clause = new_driving_clause (glue, jump);
   UPDATE_AVERAGE (averages.current.jump, jump);
+
+  if (drupper)
+    drupper->add_analyzed_color_range (driving_clause);
 
   int new_level = determine_actual_backtrack_level (jump);;
   UPDATE_AVERAGE (averages.current.level, new_level);

@@ -1,6 +1,8 @@
 #include "internal.hpp"
 #include "unordered_set"
 
+#define COLOR_UNDEF 0
+
 namespace CaDiCaL {
 
 
@@ -213,6 +215,7 @@ Drupper::Drupper (Internal * i, File * f)
 
   if (internal->opts.drupdumpcore && !f)
     file = File::write (internal, stdout, "<stdout>");
+
   if (internal->opts.drupprefercore)
     set ("prefer_core", 1);
 }
@@ -383,6 +386,7 @@ Clause * Drupper::new_unit_clause (const int lit, bool original) {
   c->vivify = false;
   c->core = false;
   c->drup_idx = 0;
+  c->color_range.reset ();
   c->used = c->glue = 0;
   c->size = 1;
   c->pos = 2;
@@ -434,10 +438,9 @@ void Drupper::append_lemma (DrupperClause * dc) {
   proof.push_back (dc);
 }
 
-void Drupper::append_failed (const vector<int> & c) {
-  colorize (c);
-  append_lemma (new DrupperClause (c, ColorRange (current_color).code ()));
-  append_lemma (new DrupperClause (c, ColorRange (current_color).code (), true));
+void Drupper::append_failed (const vector<int> & c, const ColorRange & cr) {
+  append_lemma (new DrupperClause (c, cr.code ()));
+  append_lemma (new DrupperClause (c, cr.code (), true));
   int i = proof.size () - 1;
   proof[i]->revive_at = i;
 }
@@ -901,6 +904,7 @@ void Drupper::dump_clauses (bool active) const {
     printf ("(%d) %s: ", i + j + 1, c->garbage ? "garbage" : "       ");
     printf ("(%lu): ", c);
     for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+    printf ("(%d, %d) ", c->color_range.min (), c->color_range.max ());
     printf ("\n");
   }
   for (; j >= 0; j--) {
@@ -910,6 +914,8 @@ void Drupper::dump_clauses (bool active) const {
     printf ("(%d) %s: ", j, c->garbage ? "garbage" : "       ");
     printf ("c: ");
     for (int j = 0; j < c->size; j++) printf ("%d ", c->literals[j]);
+    auto& cr = internal->flags (c->literals[0]).color_range;
+    printf ("(%d, %d) ", cr.min (), cr.max ());
     printf ("\n");
   }
   printf ("DUMP CLAUSES END\n");
@@ -1049,6 +1055,7 @@ void Drupper::add_derived_unit_clause (const int lit, bool original) {
     internal->var(lit).reason = c;
     append_lemma (new DrupperClause (c));
   }
+  colorize (c);
   assert (internal->var(lit).reason->literals[0] == lit);
   STOP (drup_inprocess);
 }
@@ -1061,13 +1068,13 @@ void Drupper::add_derived_empty_clause () {
   STOP (drup_inprocess);
 }
 
-void Drupper::add_failing_assumption (const vector<int> & c) {
+void Drupper::add_failing_assumption (const vector<int> & c, const ColorRange & cr) {
   if (isolated) return;
   assert (!validating);
   if (c.size () > 1) {
     // See ../interesting_tests/assump_and_constraint
     if (!trivially_satisfied (c))
-      append_failed (c);
+      append_failed (c, cr);
   } else {
     Clause * r = internal->var (c[0]).reason;
     if (r) mark_core (r);
@@ -1319,13 +1326,47 @@ void Drupper::colorize (const vector<int> &c) const {
     internal->flags (l).color_range.join (current_color);
 }
 
-void Drupper::colorize (Clause * c) {
+void Drupper::colorize (Clause * c) const {
   assert (c);
   c->color_range.join (current_color);
-  for (int l : *c) {
-    auto &flags = internal->flags (l);
-    flags.color_range.join (current_color);
+  for (int l : *c)
+    internal->flags (l).color_range.join (current_color);
+}
+
+void Drupper::colorize_unit (const int lit) const {
+  const Clause * reason = internal->var (lit).reason;
+  assert (reason && !reason->color_range.undef ());
+  auto& unit_color_range = internal->flags (lit).color_range;
+  unit_color_range = reason->color_range;
+  for (int l : *reason)
+    unit_color_range.join (internal->flags (l).color_range);
+}
+
+void Drupper::init_analyzed_color_range (const Clause * c) {
+  if (!c)
+    return;
+  analyzed_range.join (c->color_range);
+  assert (!analyzed_range.undef ());
+}
+
+void Drupper::join_analyzed_color_range (const int lit) {
+  analyzed_range.join (internal->flags (lit).color_range);
+  assert (!analyzed_range.undef ());
+}
+
+void Drupper::join_analyzed_color_range (const Clause * c) {
+  analyzed_range.join (c->color_range);
+  assert (!analyzed_range.undef ());
+}
+
+void Drupper::add_analyzed_color_range (Clause * c) {
+  if (!c) {
+    analyzed_range.reset ();
+    return;
   }
+  assert (!analyzed_range.undef () && c && c->color_range.undef ());
+  c->color_range.join (analyzed_range);
+  analyzed_range.reset ();
 }
 
 }

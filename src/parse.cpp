@@ -205,7 +205,9 @@ const char * Parser::parse_dimacs_non_profiled (int & vars, int strict) {
   while ((ch = parse_char ()) != EOF) {
     if (ch == ' ' || ch == '\n' || ch == '\t' || ch == '\r') continue;
     if (ch == 'c') {
-      while ((ch = parse_char ()) != '\n' && ch != EOF)
+      if (internal->drupper && !parse_string (" partition", 'c'))
+        internal->drupper->pick_new_color();
+      else while ((ch = parse_char ()) != '\n' && ch != EOF)
         ;
       if (ch == EOF) break;
       continue;

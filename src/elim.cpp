@@ -237,6 +237,11 @@ bool Internal::resolve_clauses (Eliminator & eliminator,
   assert (!c->redundant);
   assert (!d->redundant);
 
+  if (drupper) {
+    drupper->init_analyzed_color_range (c);
+    drupper->join_analyzed_color_range (d);
+  }
+
   stats.elimres++;
 
   if (c->garbage || d->garbage) return false;
