@@ -1068,13 +1068,15 @@ void Drupper::add_derived_empty_clause () {
   STOP (drup_inprocess);
 }
 
-void Drupper::add_failing_assumption (const vector<int> & c, const ColorRange & cr) {
+void Drupper::add_failing_assumption (const vector<int> & c) {
   if (isolated) return;
   assert (!validating);
   if (c.size () > 1) {
     // See ../interesting_tests/assump_and_constraint
-    if (!trivially_satisfied (c))
-      append_failed (c, cr);
+    if (trivially_satisfied (c))
+      return;
+    assert (!analyzed_range.undef ());
+    append_failed (c, analyzed_range);
   } else {
     Clause * r = internal->var (c[0]).reason;
     if (r) mark_core (r);

@@ -234,7 +234,7 @@ public:
   void add_derived_clause (Clause *);
   void add_derived_unit_clause (const int, bool original = false);
   void add_derived_empty_clause ();
-  void add_failing_assumption (const vector<int> &, const ColorRange & cr = {});
+  void add_failing_assumption (const vector<int> &);
   void add_updated_clause (Clause *);
 
   void delete_clause (const vector<int> &, bool original = false);
